@@ -1,0 +1,59 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum JobOfferStatus {
+  draft
+  sent
+  accepted
+  rejected
+  expired
+}
+
+model JobOffer {
+  id                   String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  token                String         @unique @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  status               JobOfferStatus @default(draft)
+  organizationId       String?        @map("organization_id") @db.Uuid
+  candidateName        String         @map("candidate_name")
+  candidateEmail       String?        @map("candidate_email")
+  candidateNationality String?        @map("candidate_nationality")
+  documentNumber       String?        @map("document_number")
+  jobTitle             String         @map("job_title")
+  department           String?
+  location             String?
+  contractType         String?        @map("contract_type")
+  contractDuration     String?        @map("contract_duration")
+  workDays             String?        @map("work_days")
+  probation            String?
+  annualLeave          String?        @map("annual_leave")
+  totalSalary          Float          @map("total_salary")
+  insurance            Float          @default(0)
+  basic                Float?
+  housing              Float?
+  transport            Float?
+  netSalary            Float?         @map("net_salary")
+  language             String         @default("العربية")
+  startDate            String?        @map("start_date")
+  rejectionReason      String?        @map("rejection_reason")
+  createdBy            String?        @map("created_by")
+  footerSalaryReview   String?        @map("footer_salary_review") @db.Text
+  footerValidity       String?        @map("footer_validity") @db.Text
+  footerAcceptance     String?        @map("footer_acceptance") @db.Text
+  footerRejection      String?        @map("footer_rejection") @db.Text
+  sentAt               DateTime?      @map("sent_at") @db.Timestamptz(6)
+  respondedAt          DateTime?      @map("responded_at") @db.Timestamptz(6)
+  expiresAt            DateTime?      @map("expires_at") @db.Timestamptz(6)
+  createdAt            DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([status, createdAt(sort: Desc)])
+  @@index([candidateName])
+  @@map("job_offers")
+}
