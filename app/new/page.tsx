@@ -2,8 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import Link from "next/link";
 import { DEFAULT_CONTRACT, JOB_TEMPLATES, DEFAULT_OFFER_FOOTER } from "@/lib/config";
+import { AppShell, BackLink, Field, Surface } from "@/components/app-shell";
 
 type FormState = {
   candidateName: string;
@@ -95,14 +95,23 @@ export default function NewOfferPage() {
     }
   }
 
-  async function submit(asDraft: boolean) {
+  async function submit() {
+    if (!form.candidateName.trim() || !form.jobTitle.trim()) {
+      setError("يرجى تعبئة الاسم والمسمى الوظيفي قبل الحفظ");
+      return;
+    }
+    if (form.candidateEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.candidateEmail.trim())) {
+      setError("البريد الإلكتروني غير صالح");
+      return;
+    }
+
     setBusy(true);
     setError(null);
     try {
       const res = await fetch("/api/offers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, status: asDraft ? "draft" : "draft" }),
+        body: JSON.stringify({ ...form, status: "draft" }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "فشل الحفظ");
@@ -115,69 +124,81 @@ export default function NewOfferPage() {
   }
 
   return (
-    <main style={{ maxWidth: 800, margin: "0 auto", padding: "28px 20px 60px" }}>
-      <div style={{ marginBottom: 20 }}>
-        <Link href="/" style={{ color: "var(--muted)", fontSize: 14 }}>
-          ← العودة للقائمة
-        </Link>
-        <h1 style={{ margin: "10px 0 0", fontSize: "1.6rem" }}>إنشاء عرض وظيفي</h1>
-      </div>
+    <AppShell title="إنشاء عرض وظيفي" narrow>
+      <BackLink />
 
-      {error ? (
-        <p style={{ background: "#fee4e2", color: "#b42318", padding: 12, borderRadius: 8 }}>{error}</p>
-      ) : null}
+      {error ? <p className="alert-error">{error}</p> : null}
 
-      <section style={card}>
-        <h2 style={h2}>قوالب سريعة</h2>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+      <Surface className="mb-3.5">
+        <h2 className="mb-3 mt-0 text-sm font-semibold">قوالب سريعة</h2>
+        <div className="flex flex-wrap gap-2">
           {Object.keys(JOB_TEMPLATES).map((name) => (
-            <button key={name} type="button" onClick={() => applyTemplate(name)} style={chip}>
+            <button key={name} type="button" onClick={() => applyTemplate(name)} className="chip">
               {name}
             </button>
           ))}
         </div>
-      </section>
+      </Surface>
 
-      <section style={card}>
-        <h2 style={h2}>مستند الهوية (OCR اختياري)</h2>
+      <Surface className="mb-3.5">
+        <h2 className="mb-3 mt-0 text-sm font-semibold">مستند الهوية (OCR اختياري)</h2>
         <input
           type="file"
           accept="image/*"
           disabled={ocrBusy}
+          className="field-input"
           onChange={(e) => onOcr(e.target.files?.[0] || null)}
         />
-        {ocrBusy ? <p style={{ color: "var(--muted)", fontSize: 13 }}>جاري الاستخراج…</p> : null}
-      </section>
+        {ocrBusy ? <p className="muted mt-2 text-sm">جاري الاستخراج…</p> : null}
+      </Surface>
 
-      <section style={card}>
-        <h2 style={h2}>بيانات المرشح</h2>
-        <div style={grid}>
+      <Surface className="mb-3.5">
+        <h2 className="mb-3 mt-0 text-sm font-semibold">بيانات المرشح</h2>
+        <div className="grid gap-3 sm:grid-cols-2">
           <Field label="الاسم">
-            <input value={form.candidateName} onChange={(e) => set("candidateName", e.target.value)} style={input} required />
+            <input
+              value={form.candidateName}
+              onChange={(e) => set("candidateName", e.target.value)}
+              className="field-input"
+              required
+            />
           </Field>
           <Field label="البريد">
-            <input type="email" value={form.candidateEmail} onChange={(e) => set("candidateEmail", e.target.value)} style={input} />
+            <input
+              type="email"
+              value={form.candidateEmail}
+              onChange={(e) => set("candidateEmail", e.target.value)}
+              className="field-input"
+            />
           </Field>
           <Field label="الجنسية">
-            <input value={form.candidateNationality} onChange={(e) => set("candidateNationality", e.target.value)} style={input} />
+            <input
+              value={form.candidateNationality}
+              onChange={(e) => set("candidateNationality", e.target.value)}
+              className="field-input"
+            />
           </Field>
           <Field label="رقم الهوية / الجواز">
-            <input value={form.documentNumber} onChange={(e) => set("documentNumber", e.target.value)} style={input} />
+            <input
+              value={form.documentNumber}
+              onChange={(e) => set("documentNumber", e.target.value)}
+              className="field-input"
+            />
           </Field>
         </div>
-      </section>
+      </Surface>
 
-      <section style={card}>
-        <h2 style={h2}>الوظيفة والعقد</h2>
-        <div style={grid}>
+      <Surface className="mb-3.5">
+        <h2 className="mb-3 mt-0 text-sm font-semibold">الوظيفة والعقد</h2>
+        <div className="grid gap-3 sm:grid-cols-2">
           <Field label="المسمى">
-            <input value={form.jobTitle} onChange={(e) => set("jobTitle", e.target.value)} style={input} required />
+            <input value={form.jobTitle} onChange={(e) => set("jobTitle", e.target.value)} className="field-input" required />
           </Field>
           <Field label="القسم">
-            <input value={form.department} onChange={(e) => set("department", e.target.value)} style={input} />
+            <input value={form.department} onChange={(e) => set("department", e.target.value)} className="field-input" />
           </Field>
           <Field label="الموقع">
-            <input value={form.location} onChange={(e) => set("location", e.target.value)} style={input} />
+            <input value={form.location} onChange={(e) => set("location", e.target.value)} className="field-input" />
           </Field>
           <Field label="اللغة">
             <select
@@ -194,33 +215,37 @@ export default function NewOfferPage() {
                   footerRejection: foot.rejection,
                 }));
               }}
-              style={input}
+              className="field-input"
             >
               <option value="العربية">العربية</option>
               <option value="English">English</option>
             </select>
           </Field>
           <Field label="نوع العقد">
-            <input value={form.contractType} onChange={(e) => set("contractType", e.target.value)} style={input} />
+            <input value={form.contractType} onChange={(e) => set("contractType", e.target.value)} className="field-input" />
           </Field>
           <Field label="مدة العقد">
-            <input value={form.contractDuration} onChange={(e) => set("contractDuration", e.target.value)} style={input} />
+            <input
+              value={form.contractDuration}
+              onChange={(e) => set("contractDuration", e.target.value)}
+              className="field-input"
+            />
           </Field>
           <Field label="أيام العمل">
-            <input value={form.workDays} onChange={(e) => set("workDays", e.target.value)} style={input} />
+            <input value={form.workDays} onChange={(e) => set("workDays", e.target.value)} className="field-input" />
           </Field>
           <Field label="التجربة">
-            <input value={form.probation} onChange={(e) => set("probation", e.target.value)} style={input} />
+            <input value={form.probation} onChange={(e) => set("probation", e.target.value)} className="field-input" />
           </Field>
           <Field label="الإجازة السنوية">
-            <input value={form.annualLeave} onChange={(e) => set("annualLeave", e.target.value)} style={input} />
+            <input value={form.annualLeave} onChange={(e) => set("annualLeave", e.target.value)} className="field-input" />
           </Field>
           <Field label="الراتب الإجمالي">
             <input
               type="number"
               value={form.totalSalary}
               onChange={(e) => set("totalSalary", Number(e.target.value))}
-              style={input}
+              className="field-input"
             />
           </Field>
           <Field label="التأمين">
@@ -228,69 +253,37 @@ export default function NewOfferPage() {
               type="number"
               value={form.insurance}
               onChange={(e) => set("insurance", Number(e.target.value))}
-              style={input}
+              className="field-input"
             />
           </Field>
         </div>
-      </section>
+      </Surface>
 
-      <section style={card}>
-        <h2 style={h2}>نصوص التذييل</h2>
-        <Field label="مراجعة الراتب">
-          <textarea value={form.footerSalaryReview} onChange={(e) => set("footerSalaryReview", e.target.value)} style={{ ...input, minHeight: 70 }} />
-        </Field>
-        <Field label="الصلاحية">
-          <textarea value={form.footerValidity} onChange={(e) => set("footerValidity", e.target.value)} style={{ ...input, minHeight: 60 }} />
-        </Field>
-      </section>
+      <Surface className="mb-3.5">
+        <h2 className="mb-3 mt-0 text-sm font-semibold">نصوص التذييل</h2>
+        <div className="grid gap-3">
+          <Field label="مراجعة الراتب">
+            <textarea
+              value={form.footerSalaryReview}
+              onChange={(e) => set("footerSalaryReview", e.target.value)}
+              className="field-input min-h-[70px]"
+            />
+          </Field>
+          <Field label="الصلاحية">
+            <textarea
+              value={form.footerValidity}
+              onChange={(e) => set("footerValidity", e.target.value)}
+              className="field-input min-h-[60px]"
+            />
+          </Field>
+        </div>
+      </Surface>
 
-      <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-        <button type="button" disabled={busy} onClick={() => submit(true)} style={primaryBtn}>
+      <div className="flex justify-end">
+        <button type="button" disabled={busy} onClick={submit} className="btn btn-primary">
           {busy ? "جاري الحفظ…" : "حفظ مسودة"}
         </button>
       </div>
-    </main>
+    </AppShell>
   );
 }
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13 }}>
-      <span style={{ color: "var(--muted)", fontWeight: 600 }}>{label}</span>
-      {children}
-    </label>
-  );
-}
-
-const card: React.CSSProperties = {
-  background: "var(--surface)",
-  border: "1px solid var(--line)",
-  borderRadius: 12,
-  padding: 18,
-  marginBottom: 14,
-};
-const h2: React.CSSProperties = { margin: "0 0 12px", fontSize: 15 };
-const grid: React.CSSProperties = { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 };
-const input: React.CSSProperties = {
-  border: "1px solid var(--line)",
-  borderRadius: 8,
-  padding: "10px 12px",
-  background: "#fff",
-  width: "100%",
-};
-const chip: React.CSSProperties = {
-  border: "1px solid var(--line)",
-  background: "#fff",
-  borderRadius: 999,
-  padding: "8px 14px",
-  cursor: "pointer",
-};
-const primaryBtn: React.CSSProperties = {
-  background: "var(--accent)",
-  color: "#fff",
-  border: 0,
-  borderRadius: 10,
-  padding: "12px 22px",
-  fontWeight: 600,
-  cursor: "pointer",
-};

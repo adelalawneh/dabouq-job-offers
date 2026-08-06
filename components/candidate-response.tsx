@@ -52,23 +52,15 @@ export function CandidateResponse({ offer }: { offer: OfferView }) {
   }
 
   return (
-    <main style={{ maxWidth: 560, margin: "0 auto", padding: "40px 20px" }}>
-      <div
-        style={{
-          background: "var(--surface)",
-          border: "1px solid var(--line)",
-          borderRadius: 16,
-          padding: 28,
-          boxShadow: "0 8px 30px rgba(26,35,50,0.06)",
-        }}
-      >
-        <p style={{ margin: 0, color: "var(--muted)", fontSize: 13 }}>{COMPANY.nameAr}</p>
-        <h1 style={{ margin: "8px 0 4px", fontSize: "1.5rem" }}>عرض وظيفي</h1>
-        <p style={{ margin: 0, color: "var(--muted)" }}>
-          الحالة: <strong>{STATUS_LABELS[status] || status}</strong>
+    <main className="page page-narrow !max-w-[560px] !pt-10">
+      <div className="surface p-7">
+        <p className="muted m-0 text-sm">{COMPANY.nameAr}</p>
+        <h1 className="mt-2 mb-1 text-2xl font-bold">عرض وظيفي</h1>
+        <p className="muted m-0 text-sm">
+          الحالة: <strong className="text-[var(--foreground)]">{STATUS_LABELS[status] || status}</strong>
         </p>
 
-        <dl style={{ marginTop: 20, display: "grid", gap: 10 }}>
+        <dl className="mt-5 grid gap-2.5">
           <Row label="المرشح" value={offer.candidateName} />
           <Row label="المسمى" value={offer.jobTitle} />
           <Row label="القسم" value={offer.department || "—"} />
@@ -79,12 +71,10 @@ export function CandidateResponse({ offer }: { offer: OfferView }) {
           ) : null}
         </dl>
 
-        {error ? (
-          <p style={{ background: "#fee4e2", color: "#b42318", padding: 12, borderRadius: 8 }}>{error}</p>
-        ) : null}
+        {error ? <p className="alert-error mt-4">{error}</p> : null}
 
         {locked ? (
-          <p style={{ marginTop: 20, color: "var(--muted)" }}>
+          <p className="muted mt-5 mb-0">
             {status === "accepted"
               ? "شكرًا لقبولك العرض. سيتواصل معك فريق الموارد البشرية."
               : status === "rejected"
@@ -92,72 +82,29 @@ export function CandidateResponse({ offer }: { offer: OfferView }) {
                 : "انتهت صلاحية هذا العرض."}
           </p>
         ) : (
-          <div style={{ marginTop: 24, display: "flex", flexDirection: "column", gap: 12 }}>
-            <label style={{ fontSize: 13 }}>
-              <span style={{ color: "var(--muted)" }}>تاريخ المباشرة (عند القبول)</span>
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                style={{
-                  display: "block",
-                  width: "100%",
-                  marginTop: 6,
-                  padding: 10,
-                  borderRadius: 8,
-                  border: "1px solid var(--line)",
-                }}
-              />
+          <div className="mt-6 flex flex-col gap-3">
+            <label className="text-sm">
+              <span className="muted">تاريخ المباشرة (عند القبول)</span>
+              <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="field-input mt-1.5" />
             </label>
-            <label style={{ fontSize: 13 }}>
-              <span style={{ color: "var(--muted)" }}>سبب الرفض (عند الرفض)</span>
+            <label className="text-sm">
+              <span className="muted">سبب الرفض (عند الرفض)</span>
               <textarea
                 value={rejectionReason}
                 onChange={(e) => setRejectionReason(e.target.value)}
-                style={{
-                  display: "block",
-                  width: "100%",
-                  marginTop: 6,
-                  padding: 10,
-                  borderRadius: 8,
-                  border: "1px solid var(--line)",
-                  minHeight: 70,
-                }}
+                className="field-input mt-1.5 min-h-[70px]"
               />
             </label>
-            <div style={{ display: "flex", gap: 10 }}>
+            <div className="flex gap-2.5">
               <button
                 type="button"
                 disabled={busy}
                 onClick={() => respond(true)}
-                style={{
-                  flex: 1,
-                  background: "var(--ok)",
-                  color: "#fff",
-                  border: 0,
-                  borderRadius: 10,
-                  padding: 12,
-                  fontWeight: 700,
-                  cursor: "pointer",
-                }}
+                className="btn flex-1 !bg-[color-mix(in_oklch,var(--success)_75%,black)] !text-white"
               >
                 قبول
               </button>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => respond(false)}
-                style={{
-                  flex: 1,
-                  background: "var(--danger)",
-                  color: "#fff",
-                  border: 0,
-                  borderRadius: 10,
-                  padding: 12,
-                  fontWeight: 700,
-                  cursor: "pointer",
-                }}
-              >
+              <button type="button" disabled={busy} onClick={() => respond(false)} className="btn btn-danger flex-1">
                 رفض
               </button>
             </div>
@@ -170,9 +117,9 @@ export function CandidateResponse({ offer }: { offer: OfferView }) {
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, borderBottom: "1px solid var(--line)", paddingBottom: 8 }}>
-      <dt style={{ margin: 0, color: "var(--muted)", fontSize: 13 }}>{label}</dt>
-      <dd style={{ margin: 0, fontWeight: 600 }}>{value}</dd>
+    <div className="flex justify-between gap-3 border-b border-[var(--border)] pb-2">
+      <dt className="muted m-0 text-sm">{label}</dt>
+      <dd className="m-0 font-semibold">{value}</dd>
     </div>
   );
 }

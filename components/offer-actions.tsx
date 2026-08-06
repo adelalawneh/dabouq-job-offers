@@ -41,40 +41,27 @@ export function OfferActions({ id, status, token }: { id: string; status: string
   }
 
   return (
-    <div style={{ marginTop: 20, display: "flex", flexDirection: "column", gap: 12 }}>
-      {msg ? <p style={{ background: "#dcfae6", color: "#067647", padding: 12, borderRadius: 8, margin: 0 }}>{msg}</p> : null}
-      {err ? <p style={{ background: "#fee4e2", color: "#b42318", padding: 12, borderRadius: 8, margin: 0 }}>{err}</p> : null}
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-        <a
-          href={`/api/offers/${id}/pdf`}
-          style={{ ...btn, background: "var(--ink)", color: "#fff" }}
-        >
+    <div className="mt-1 flex flex-col gap-3">
+      {msg ? <p className="alert-ok">{msg}</p> : null}
+      {err ? <p className="alert-error !mb-0">{err}</p> : null}
+      <div className="flex flex-wrap gap-2.5">
+        <a href={`/api/offers/${id}/pdf`} className="btn btn-secondary">
           تحميل PDF
         </a>
         {(status === "draft" || status === "sent") && (
-          <button type="button" disabled={busy} onClick={send} style={{ ...btn, background: "var(--accent)", color: "#fff" }}>
+          <button type="button" disabled={busy} onClick={send} className="btn btn-primary">
             {busy ? "…" : "إرسال بالبريد"}
           </button>
         )}
         {status === "draft" && (
-          <button type="button" disabled={busy} onClick={remove} style={{ ...btn, background: "#fee4e2", color: "#b42318" }}>
+          <button type="button" disabled={busy} onClick={remove} className="btn btn-danger">
             حذف المسودة
           </button>
         )}
       </div>
-      <p style={{ fontSize: 12, color: "var(--muted)", margin: 0 }}>
-        رابط المرشح: <code>/r/{token}</code>
+      <p className="muted m-0 text-xs">
+        رابط المرشح: <code className="rounded bg-[var(--muted)] px-1.5 py-0.5">/r/{token}</code>
       </p>
     </div>
   );
 }
-
-const btn: React.CSSProperties = {
-  border: 0,
-  borderRadius: 10,
-  padding: "11px 18px",
-  fontWeight: 600,
-  cursor: "pointer",
-  textDecoration: "none",
-  display: "inline-block",
-};

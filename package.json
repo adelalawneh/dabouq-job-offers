@@ -14,6 +14,8 @@
   "dependencies": {
     "@pdf-lib/fontkit": "^1.1.1",
     "@prisma/client": "6.19.3",
+    "arabic-persian-reshaper": "^1.0.1",
+    "bidi-js": "^1.0.3",
     "next": "15.5.18",
     "nodemailer": "^6.10.1",
     "pdf-lib": "^1.17.1",
@@ -32,6 +34,7 @@
     "eslint-config-next": "15.5.18",
     "prisma": "6.19.3",
     "tailwindcss": "^4.1.4",
+    "tsx": "^4.23.8",
     "typescript": "^5.8.3"
   }
 }

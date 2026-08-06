@@ -2,13 +2,14 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createOffer } from "@/lib/offers";
 import { getSession } from "@/lib/session";
+import { apiErrorMessage } from "@/lib/validation";
 
 const schema = z.object({
-  candidateName: z.string().min(1),
+  candidateName: z.string().trim().min(1),
   candidateEmail: z.string().email().optional().or(z.literal("")),
   candidateNationality: z.string().optional(),
   documentNumber: z.string().optional(),
-  jobTitle: z.string().min(1),
+  jobTitle: z.string().trim().min(1),
   department: z.string().optional(),
   location: z.string().optional(),
   contractType: z.string().optional(),
@@ -39,9 +40,6 @@ export async function POST(request: Request) {
     });
     return NextResponse.json({ id: offer.id });
   } catch (e) {
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : "طلب غير صالح" },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: apiErrorMessage(e) }, { status: 400 });
   }
 }

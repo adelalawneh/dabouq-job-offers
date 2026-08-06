@@ -47,9 +47,9 @@ export const JOB_TEMPLATES = {
 export const DEFAULT_CONTRACT = {
   contractType: "محدد المدة (فردي)",
   contractDuration: "سنة",
-  workDays: "٦ أيام في الأسبوع - 9 ساعات يوميًا تتضمن ساعة راحة",
-  probation: "٩٠ يومًا",
-  annualLeave: "٢١ يومًا في السنة",
+  workDays: "6 أيام في الأسبوع - 9 ساعات يوميًا تتضمن ساعة راحة",
+  probation: "90 يومًا",
+  annualLeave: "21 يومًا في السنة",
 } as const;
 
 export const DEFAULT_OFFER_FOOTER = {

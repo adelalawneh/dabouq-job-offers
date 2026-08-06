@@ -146,9 +146,26 @@ function numberToEnglish(n: number): string {
   return parts.join(" ");
 }
 
+/** ASCII-only for HTTP headers / email filenames (Arabic names must not go in ByteString headers). */
 export function cleanFilename(name: string) {
-  const cleaned = name.trim().replace(/[\\/*?:"<>|]/g, "").replace(/\s+/g, "_");
+  const cleaned = name
+    .trim()
+    .normalize("NFKD")
+    .replace(/[^\x20-\x7E]/g, "")
+    .replace(/[\\/*?:"<>|]/g, "")
+    .replace(/\s+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_|_$/g, "");
   return cleaned || "candidate";
+}
+
+/** RFC 5987 Content-Disposition — ASCII fallback + UTF-8 filename*. */
+export function pdfAttachmentDisposition(candidateName: string, language: string) {
+  const isAr = (language || "العربية") === "العربية";
+  const suffix = isAr ? "AR" : "EN";
+  const ascii = `DABOUQ_JOB_OFFER_${cleanFilename(candidateName)}_${suffix}.pdf`;
+  const utf8Name = `DABOUQ_JOB_OFFER_${candidateName.trim() || "candidate"}_${suffix}.pdf`;
+  return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(utf8Name)}`;
 }
 
 export function footerDefaults(language: string) {

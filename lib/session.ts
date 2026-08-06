@@ -22,6 +22,20 @@ export {
 export async function getSession(): Promise<HrSession | null> {
   const jar = await cookies();
   const raw = jar.get(SESSION_COOKIE)?.value;
-  if (!raw) return null;
-  return verifySessionToken(raw);
+  if (raw) {
+    const session = await verifySessionToken(raw);
+    if (session) return session;
+  }
+
+  // Local/dev: pages are open when PORTAL_ONLY=false, so APIs must match.
+  if (!isPortalOnly()) {
+    return {
+      userId: "local-dev",
+      email: "local@dabouq.com.sa",
+      organizationId: undefined,
+      appSlug: "job-offers",
+    };
+  }
+
+  return null;
 }
