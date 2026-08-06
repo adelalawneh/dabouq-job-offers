@@ -217,4 +217,25 @@
     background: rgb(255 255 255 / 0.9);
     backdrop-filter: blur(14px);
   }
+
+  .portal-back-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    white-space: nowrap;
+    border-radius: 0.75rem;
+    border: 1px solid var(--border);
+    background: #fff;
+    color: var(--brand);
+    padding: 0.45rem 0.9rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-decoration: none;
+    transition: background 0.15s ease, border-color 0.15s ease;
+  }
+
+  .portal-back-btn:hover {
+    background: var(--muted);
+    border-color: color-mix(in srgb, var(--brand) 35%, var(--border));
+  }
 }

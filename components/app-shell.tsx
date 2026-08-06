@@ -1,6 +1,14 @@
 import Image from "next/image";
 import Link from "next/link";
 
+function portalHomeUrl() {
+  return (
+    process.env.NEXT_PUBLIC_PORTAL_URL ||
+    process.env.PORTAL_URL ||
+    "https://www.dabouqtools.com"
+  ).replace(/\/$/, "");
+}
+
 export function AppShell({
   children,
   title,
@@ -14,20 +22,27 @@ export function AppShell({
   actions?: React.ReactNode;
   narrow?: boolean;
 }) {
+  const portalUrl = portalHomeUrl();
+
   return (
     <div>
       <header className="app-topbar">
-        <Link href="/" className="inline-flex items-center gap-3">
-          <Image
-            src="/dabouq-logo.png"
-            alt="Dabouq Group"
-            width={1024}
-            height={609}
-            priority
-            className="h-auto w-[220px] max-w-full object-contain"
-          />
-        </Link>
-        <p className="muted m-0 hidden text-sm sm:block">مولّد العروض الوظيفية</p>
+        <div className="flex flex-wrap items-center gap-3">
+          <Link href="/" className="inline-flex items-center gap-3">
+            <Image
+              src="/dabouq-logo.png"
+              alt="Dabouq Group"
+              width={1024}
+              height={609}
+              priority
+              className="h-auto w-[180px] max-w-full object-contain sm:w-[220px]"
+            />
+          </Link>
+          <p className="muted m-0 hidden text-sm sm:block">مولّد العروض الوظيفية</p>
+        </div>
+        <a href={portalUrl} className="portal-back-btn">
+          العودة إلى البورتال
+        </a>
       </header>
 
       <div className={`page ${narrow ? "page-narrow" : ""}`}>
