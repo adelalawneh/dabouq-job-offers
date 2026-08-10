@@ -8,7 +8,19 @@ export type HrSession = {
 export const SESSION_COOKIE = "job_offers_session";
 
 function secretBytes() {
-  const secret = process.env.SESSION_SECRET || process.env.PORTAL_URL || "dev-insecure-secret";
+  const secret = (process.env.SESSION_SECRET || "").trim();
+
+  // The previous fallbacks were PORTAL_URL and a hardcoded string — both public
+  // knowledge, which made every session token forgeable. Fail closed instead.
+  if (!secret || secret.length < 32) {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error(
+        "SESSION_SECRET is required (min 32 chars). Generate one: openssl rand -base64 48",
+      );
+    }
+    return new TextEncoder().encode("dev-only-insecure-secret-not-for-production");
+  }
+
   return new TextEncoder().encode(secret);
 }
 
