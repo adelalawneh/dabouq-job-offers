@@ -76,13 +76,45 @@ export function computeSaudiSalaryBreakdown(
   schemeId: string = DEFAULT_GOSI_SCHEME_ID,
 ): SalaryBreakdown {
   const total = Math.max(0, Math.round(Number(totalSalary) || 0));
-  const scheme = getGosiScheme(schemeId);
   const { basic, housing, transport } = salarySplit(total);
+  return computeFromComponents(basic, housing, transport, schemeId, true);
+}
+
+/** Primary path: enter basic / housing / transport → total & GOSI follow. */
+export function computeFromComponents(
+  basicIn: number,
+  housingIn: number,
+  transportIn: number,
+  schemeId: string = DEFAULT_GOSI_SCHEME_ID,
+  isSaudi = true,
+): SalaryBreakdown {
+  const basic = Math.max(0, Math.round(Number(basicIn) || 0));
+  const housing = Math.max(0, Math.round(Number(housingIn) || 0));
+  const transport = Math.max(0, Math.round(Number(transportIn) || 0));
+  const total = basic + housing + transport;
+  // GOSI applies only to basic + housing — transport is excluded.
   const gosiBase = basic + housing;
+
+  if (!isSaudi) {
+    return {
+      basic,
+      housing,
+      transport,
+      gosiBase,
+      employeePct: 0,
+      companyPct: 0,
+      employeeDeduction: 0,
+      companyContribution: 0,
+      netSalary: total,
+      companyCost: total,
+      schemeId: "",
+      schemeLabel: "",
+    };
+  }
+
+  const scheme = getGosiScheme(schemeId);
   const employeeDeduction = Math.round(gosiBase * (scheme.employeePct / 100));
   const companyContribution = Math.round(gosiBase * (scheme.companyPct / 100));
-  const netSalary = Math.round(total - employeeDeduction);
-  const companyCost = Math.round(total + companyContribution);
   return {
     basic,
     housing,
@@ -92,8 +124,8 @@ export function computeSaudiSalaryBreakdown(
     companyPct: scheme.companyPct,
     employeeDeduction,
     companyContribution,
-    netSalary,
-    companyCost,
+    netSalary: Math.round(total - employeeDeduction),
+    companyCost: Math.round(total + companyContribution),
     schemeId: scheme.id,
     schemeLabel: scheme.labelAr,
   };

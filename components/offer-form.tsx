@@ -1,16 +1,15 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { contractDefaults, JOB_TEMPLATES, DEFAULT_OFFER_FOOTER } from "@/lib/config";
-import { money } from "@/lib/helpers";
 import {
-  computeNonSaudiSalaryBreakdown,
-  computeSaudiSalaryBreakdown,
+  computeFromComponents,
   DEFAULT_GOSI_SCHEME_ID,
   GOSI_SCHEMES,
   looksSaudiNationality,
 } from "@/lib/gosi";
+import { money, salarySplit } from "@/lib/helpers";
 import { AppShell, BackLink, Field, Surface } from "@/components/app-shell";
 
 type FormState = {
@@ -46,7 +45,14 @@ type FormState = {
 };
 
 const initialDefaults = contractDefaults("العربية");
-const initialBreakdown = computeSaudiSalaryBreakdown(3500, DEFAULT_GOSI_SCHEME_ID);
+const initialParts = salarySplit(3500);
+const initialBreakdown = computeFromComponents(
+  initialParts.basic,
+  initialParts.housing,
+  initialParts.transport,
+  DEFAULT_GOSI_SCHEME_ID,
+  false,
+);
 
 const initial: FormState = {
   candidateName: "",
@@ -61,7 +67,7 @@ const initial: FormState = {
   workDays: initialDefaults.workDays,
   probation: initialDefaults.probation,
   annualLeave: initialDefaults.annualLeave,
-  totalSalary: 3500,
+  totalSalary: initialBreakdown.basic + initialBreakdown.housing + initialBreakdown.transport,
   isSaudi: false,
   gosiSchemeId: DEFAULT_GOSI_SCHEME_ID,
   manualSalaryEdit: false,
@@ -69,10 +75,10 @@ const initial: FormState = {
   housing: initialBreakdown.housing,
   transport: initialBreakdown.transport,
   gosiBase: initialBreakdown.gosiBase,
-  employeeDeduction: 0,
-  companyContribution: 0,
-  netSalary: 3500,
-  companyCost: 3500,
+  employeeDeduction: initialBreakdown.employeeDeduction,
+  companyContribution: initialBreakdown.companyContribution,
+  netSalary: initialBreakdown.netSalary,
+  companyCost: initialBreakdown.companyCost,
   language: "العربية",
   footerSalaryReview: DEFAULT_OFFER_FOOTER.ar.salaryReview,
   footerValidity: DEFAULT_OFFER_FOOTER.ar.validity,
@@ -80,15 +86,30 @@ const initial: FormState = {
   footerRejection: DEFAULT_OFFER_FOOTER.ar.rejection,
 };
 
-function applyAutoBreakdown(f: FormState): FormState {
-  const calc = f.isSaudi
-    ? computeSaudiSalaryBreakdown(f.totalSalary, f.gosiSchemeId)
-    : computeNonSaudiSalaryBreakdown(f.totalSalary, 0);
+/** Recalc total + GOSI from the three manual salary parts. */
+function applyFromParts(f: FormState, keepManualOverrides = false): FormState {
+  const calc = computeFromComponents(f.basic, f.housing, f.transport, f.gosiSchemeId, f.isSaudi);
+  if (keepManualOverrides && f.manualSalaryEdit) {
+    return {
+      ...f,
+      basic: calc.basic,
+      housing: calc.housing,
+      transport: calc.transport,
+      totalSalary: calc.basic + calc.housing + calc.transport,
+      gosiBase: calc.gosiBase,
+      // keep user overrides for deduction / net / cost
+      employeeDeduction: f.employeeDeduction,
+      companyContribution: f.companyContribution,
+      netSalary: f.netSalary,
+      companyCost: f.companyCost,
+    };
+  }
   return {
     ...f,
     basic: calc.basic,
     housing: calc.housing,
     transport: calc.transport,
+    totalSalary: calc.basic + calc.housing + calc.transport,
     gosiBase: calc.gosiBase,
     employeeDeduction: calc.employeeDeduction,
     companyContribution: calc.companyContribution,
@@ -124,11 +145,22 @@ export type OfferFormSeed = Partial<{
 }>;
 
 function seedToForm(seed?: OfferFormSeed | null): FormState {
-  if (!seed) return applyAutoBreakdown(initial);
+  if (!seed) return applyFromParts(initial);
+
   const isSaudi = looksSaudiNationality(seed.candidateNationality) || (seed.insurance ?? 0) > 0;
-  const total = seed.totalSalary ?? 3500;
   const lang = seed.language || "العربية";
   const foot = lang === "العربية" ? DEFAULT_OFFER_FOOTER.ar : DEFAULT_OFFER_FOOTER.en;
+
+  let basic = seed.basic ?? null;
+  let housing = seed.housing ?? null;
+  let transport = seed.transport ?? null;
+  if (basic == null || housing == null || transport == null) {
+    const split = salarySplit(seed.totalSalary ?? 3500);
+    basic = basic ?? split.basic;
+    housing = housing ?? split.housing;
+    transport = transport ?? split.transport;
+  }
+
   const base: FormState = {
     ...initial,
     candidateName: seed.candidateName || "",
@@ -143,7 +175,9 @@ function seedToForm(seed?: OfferFormSeed | null): FormState {
     workDays: seed.workDays || initial.workDays,
     probation: seed.probation || initial.probation,
     annualLeave: seed.annualLeave || initial.annualLeave,
-    totalSalary: total,
+    basic,
+    housing,
+    transport,
     isSaudi,
     gosiSchemeId: DEFAULT_GOSI_SCHEME_ID,
     language: lang,
@@ -152,41 +186,16 @@ function seedToForm(seed?: OfferFormSeed | null): FormState {
     footerAcceptance: seed.footerAcceptance || foot.acceptance,
     footerRejection: seed.footerRejection || foot.rejection,
     manualSalaryEdit: false,
-    basic: 0,
-    housing: 0,
-    transport: 0,
-    gosiBase: 0,
-    employeeDeduction: 0,
-    companyContribution: 0,
-    netSalary: 0,
-    companyCost: 0,
   };
-  const auto = applyAutoBreakdown(base);
-  // Preserve stored salary lines when editing an existing offer
-  if (
-    seed.basic != null ||
-    seed.housing != null ||
-    seed.transport != null ||
-    seed.insurance != null ||
-    seed.netSalary != null
-  ) {
-    const basic = seed.basic ?? auto.basic;
-    const housing = seed.housing ?? auto.housing;
-    const transport = seed.transport ?? auto.transport;
-    const employeeDeduction = seed.insurance ?? auto.employeeDeduction;
-    const netSalary = seed.netSalary ?? Math.round(total - employeeDeduction);
-    const companyContribution = isSaudi ? auto.companyContribution : 0;
+
+  const auto = applyFromParts(base);
+  if (seed.insurance != null || seed.netSalary != null) {
     return {
       ...auto,
-      basic,
-      housing,
-      transport,
-      gosiBase: basic + housing,
-      employeeDeduction,
-      companyContribution,
-      netSalary,
-      companyCost: Math.round(total + companyContribution),
-      manualSalaryEdit: true,
+      employeeDeduction: seed.insurance ?? auto.employeeDeduction,
+      netSalary: seed.netSalary ?? auto.netSalary,
+      companyCost: Math.round(auto.totalSalary + auto.companyContribution),
+      manualSalaryEdit: seed.insurance != null,
     };
   }
   return auto;
@@ -211,13 +220,14 @@ export function OfferForm({
     setForm((f) => ({ ...f, [key]: value }));
   }
 
-  // Recalculate when total / scheme / saudi changes — unless manual edit is on
-  useEffect(() => {
-    setForm((f) => {
-      if (f.manualSalaryEdit) return f;
-      return applyAutoBreakdown(f);
-    });
-  }, [form.totalSalary, form.gosiSchemeId, form.isSaudi, form.manualSalaryEdit]);
+  function setSalaryPart(key: "basic" | "housing" | "transport", value: number) {
+    setForm((f) =>
+      applyFromParts(
+        { ...f, [key]: value },
+        /* keepManualOverrides */ f.manualSalaryEdit,
+      ),
+    );
+  }
 
   const scheme = useMemo(
     () => GOSI_SCHEMES.find((s) => s.id === form.gosiSchemeId) || GOSI_SCHEMES[1]!,
@@ -227,13 +237,16 @@ export function OfferForm({
   function applyTemplate(name: string) {
     const t = JOB_TEMPLATES[name as keyof typeof JOB_TEMPLATES];
     if (!t) return;
+    const parts = salarySplit(t.totalSalary);
     setForm((f) =>
-      applyAutoBreakdown({
+      applyFromParts({
         ...f,
         jobTitle: t.jobTitle,
         department: t.department,
         location: t.location,
-        totalSalary: t.totalSalary,
+        basic: parts.basic,
+        housing: parts.housing,
+        transport: parts.transport,
         manualSalaryEdit: false,
       }),
     );
@@ -252,7 +265,7 @@ export function OfferForm({
       setForm((f) => {
         const nationality = data.nationality || f.candidateNationality;
         const saudi = looksSaudiNationality(nationality);
-        return applyAutoBreakdown({
+        return applyFromParts({
           ...f,
           candidateName: data.full_name || f.candidateName,
           candidateNationality: nationality,
@@ -378,7 +391,7 @@ export function OfferForm({
                 const nationality = e.target.value;
                 const saudi = looksSaudiNationality(nationality);
                 setForm((f) =>
-                  applyAutoBreakdown({
+                  applyFromParts({
                     ...f,
                     candidateNationality: nationality,
                     isSaudi: saudi ? true : f.isSaudi,
@@ -465,8 +478,11 @@ export function OfferForm({
         </div>
       </Surface>
 
-      <Surface className="mb-3.5">
+            <Surface className="mb-3.5">
         <h2 className="mb-3 mt-0 text-sm font-semibold">تفاصيل الراتب والتأمينات</h2>
+        <p className="muted mt-0 mb-4 text-sm">
+          أدخل الأساسي والسكن والنقل يدويًا — الإجمالي والتأمينات يُحسبان تلقائيًا.
+        </p>
 
         <div className="mb-4 grid gap-3 sm:grid-cols-2">
           <Field label="هل المرشح سعودي؟">
@@ -476,7 +492,7 @@ export function OfferForm({
               onChange={(e) => {
                 const isSaudi = e.target.value === "yes";
                 setForm((f) =>
-                  applyAutoBreakdown({
+                  applyFromParts({
                     ...f,
                     isSaudi,
                     manualSalaryEdit: false,
@@ -488,44 +504,74 @@ export function OfferForm({
               <option value="yes">نعم</option>
             </select>
           </Field>
-          <Field label="إجمالي الراتب">
+          {form.isSaudi ? (
+            <Field label="نسبة مساهمة التأمينات (GOSI)">
+              <select
+                className="field-input"
+                value={form.gosiSchemeId}
+                onChange={(e) => {
+                  setForm((f) =>
+                    applyFromParts({
+                      ...f,
+                      gosiSchemeId: e.target.value,
+                      manualSalaryEdit: false,
+                    }),
+                  );
+                }}
+              >
+                {GOSI_SCHEMES.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.labelAr}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          ) : (
+            <p className="muted m-0 self-end text-sm">لغير السعوديين لا تُحسب مساهمة التأمينات تلقائيًا.</p>
+          )}
+        </div>
+
+        <div className="mb-4 grid gap-3 sm:grid-cols-3">
+          <Field label="الراتب الأساسي">
             <input
               type="number"
               min={0}
-              value={form.totalSalary}
-              onChange={(e) => set("totalSalary", Number(e.target.value))}
+              value={form.basic}
+              onChange={(e) => setSalaryPart("basic", Number(e.target.value))}
+              className="field-input"
+            />
+          </Field>
+          <Field label="بدل السكن">
+            <input
+              type="number"
+              min={0}
+              value={form.housing}
+              onChange={(e) => setSalaryPart("housing", Number(e.target.value))}
+              className="field-input"
+            />
+          </Field>
+          <Field label="بدل النقل">
+            <input
+              type="number"
+              min={0}
+              value={form.transport}
+              onChange={(e) => setSalaryPart("transport", Number(e.target.value))}
               className="field-input"
             />
           </Field>
         </div>
 
-        {form.isSaudi ? (
-          <Field label="نسبة مساهمة التأمينات (GOSI)">
-            <select
-              className="field-input"
-              value={form.gosiSchemeId}
-              onChange={(e) => {
-                setForm((f) =>
-                  applyAutoBreakdown({
-                    ...f,
-                    gosiSchemeId: e.target.value,
-                    manualSalaryEdit: false,
-                  }),
-                );
-              }}
-            >
-              {GOSI_SCHEMES.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.labelAr}
-                </option>
-              ))}
-            </select>
-          </Field>
-        ) : (
-          <p className="muted mb-3 text-sm">لغير السعوديين لا تُحسب مساهمة التأمينات تلقائيًا.</p>
-        )}
+        <div className="mb-4 rounded-xl border border-[var(--border)] bg-[var(--muted)]/50 px-3 py-3 text-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="muted">إجمالي الراتب (محسوب تلقائيًا)</span>
+            <strong className="text-lg tabular-nums text-[var(--brand)]">
+              {money(form.totalSalary)} ر.س
+            </strong>
+          </div>
+          <p className="muted mt-1 mb-0 text-xs">= الأساسي + بدل السكن + بدل النقل</p>
+        </div>
 
-        <label className="mt-4 mb-3 flex cursor-pointer items-center gap-2 text-sm">
+        <label className="mb-3 flex cursor-pointer items-center gap-2 text-sm">
           <input
             type="checkbox"
             checked={form.manualSalaryEdit}
@@ -533,37 +579,38 @@ export function OfferForm({
               const on = e.target.checked;
               setForm((f) => {
                 if (on) return { ...f, manualSalaryEdit: true };
-                return applyAutoBreakdown({ ...f, manualSalaryEdit: false });
+                return applyFromParts({ ...f, manualSalaryEdit: false });
               });
             }}
           />
-          <span>تعديل يدوي للأرقام (تبقى القيم الحالية قابلة للتعديل)</span>
+          <span>تعديل يدوي لخصم/مساهمة التأمينات والصافي (اختياري)</span>
         </label>
 
         <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[color-mix(in_srgb,var(--success)_8%,white)]">
           <div className="border-b border-[var(--border)] px-3 py-2 text-sm font-semibold text-[var(--brand)]">
-            كيف تُحسب الراتب
+            ملخص الحساب
             {form.isSaudi ? (
               <span className="muted ms-2 text-xs font-normal">
-                · أساسي 64.5% + سكن 22.6% + نقل الباقي · التأمين على (أساسي+سكن)
+                · خصم التأمينات على (الأساسي + بدل السكن) فقط — بدون بدل النقل
               </span>
             ) : null}
           </div>
           <div className="grid gap-0 sm:grid-cols-2">
             {(
               [
-                ["basic", "الراتب الأساسي", form.basic],
-                ["housing", "بدل السكن", form.housing],
-                ["transport", "بدل النقل", form.transport],
                 ["gosiBase", "الأجر الخاضع للتأمينات (أساسي + سكن)", form.gosiBase],
                 [
                   "employeeDeduction",
-                  form.isSaudi ? `خصم الموظف (${scheme.employeePct}%)` : "خصم الموظف",
+                  form.isSaudi
+                    ? `خصم الموظف (${scheme.employeePct}%) من الأساسي + السكن`
+                    : "خصم الموظف",
                   form.employeeDeduction,
                 ],
                 [
                   "companyContribution",
-                  form.isSaudi ? `مساهمة الشركة (${scheme.companyPct}%)` : "مساهمة الشركة",
+                  form.isSaudi
+                    ? `مساهمة الشركة (${scheme.companyPct}%) من الأساسي + السكن`
+                    : "مساهمة الشركة",
                   form.companyContribution,
                 ],
                 ["netSalary", "صافي راتب الموظف", form.netSalary],
@@ -571,9 +618,6 @@ export function OfferForm({
               ] as const
             ).map(([key, label, value]) => {
               const editableKeys = new Set([
-                "basic",
-                "housing",
-                "transport",
                 "employeeDeduction",
                 "companyContribution",
                 "netSalary",
@@ -595,11 +639,11 @@ export function OfferForm({
                         const n = Number(e.target.value);
                         setForm((f) => {
                           const next = { ...f, [key]: n };
-                          if (key === "basic" || key === "housing") {
-                            next.gosiBase = Math.round(next.basic + next.housing);
-                          }
                           if (key === "employeeDeduction") {
                             next.netSalary = Math.round(next.totalSalary - n);
+                          }
+                          if (key === "companyContribution") {
+                            next.companyCost = Math.round(next.totalSalary + n);
                           }
                           return next;
                         });
@@ -615,11 +659,10 @@ export function OfferForm({
           <div className="border-t border-[var(--border)] px-3 py-2 text-sm">
             <span className="muted">إجمالي الراتب: </span>
             <strong className="tabular-nums">{money(form.totalSalary)} ر.س</strong>
-            {breakdownLocked ? (
-              <span className="muted ms-2 text-xs">· يُحدَّث تلقائيًا عند تغيير الراتب أو النسبة</span>
-            ) : (
-              <span className="ms-2 text-xs text-[var(--warning)]">· وضع التعديل اليدوي مفعّل</span>
-            )}
+            <span className="muted ms-2 text-xs">· مجموع الأساسي + السكن + النقل</span>
+            {!breakdownLocked ? (
+              <span className="ms-2 text-xs text-[var(--warning)]">· تعديل يدوي للتأمينات مفعّل</span>
+            ) : null}
           </div>
         </div>
       </Surface>
