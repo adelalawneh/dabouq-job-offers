@@ -17,6 +17,10 @@ export type OfferInput = {
   annualLeave?: string | null;
   totalSalary: number;
   insurance?: number;
+  basic?: number | null;
+  housing?: number | null;
+  transport?: number | null;
+  netSalary?: number | null;
   language?: string;
   footerSalaryReview?: string | null;
   footerValidity?: string | null;
@@ -28,7 +32,12 @@ export type OfferInput = {
 
 function withComputed(data: OfferInput) {
   const insurance = data.insurance ?? 0;
-  const salary = computeSalaryFields(data.totalSalary, insurance);
+  const salary = computeSalaryFields(data.totalSalary, insurance, {
+    basic: data.basic,
+    housing: data.housing,
+    transport: data.transport,
+    netSalary: data.netSalary,
+  });
   const footer = resolveFooterFields({
     language: data.language,
     footerSalaryReview: data.footerSalaryReview,
@@ -93,6 +102,10 @@ export async function updateOffer(id: string, data: Partial<OfferInput>, status?
     annualLeave: data.annualLeave !== undefined ? data.annualLeave : existing.annualLeave,
     totalSalary: data.totalSalary ?? existing.totalSalary,
     insurance: data.insurance ?? existing.insurance,
+    basic: data.basic !== undefined ? data.basic : existing.basic,
+    housing: data.housing !== undefined ? data.housing : existing.housing,
+    transport: data.transport !== undefined ? data.transport : existing.transport,
+    netSalary: data.netSalary !== undefined ? data.netSalary : existing.netSalary,
     language: data.language ?? existing.language,
     footerSalaryReview:
       data.footerSalaryReview !== undefined ? data.footerSalaryReview : existing.footerSalaryReview,

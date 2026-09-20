@@ -6,6 +6,7 @@ import { ArabicShaper } from "arabic-persian-reshaper";
 import type { JobOffer } from "@/lib/db";
 import { COMPANY } from "./config";
 import { money, salaryArWords, salaryEnWords, resolveFooterFields } from "./helpers";
+import { localizeOfferFieldsForPdf, type PdfLocaleFields } from "./translate";
 
 const A4: [number, number] = [595.28, 841.89];
 const CM = 28.35;
@@ -47,7 +48,7 @@ function widthOf(font: PDFFont, text: string, size: number) {
   return font.widthOfTextAtSize(text, size);
 }
 
-/** Split mixed Arabic/Latin so digits render with Helvetica (no spaced/reversed glyphs). */
+/** Split mixed Arabic/Latin so digits render cleanly with RTL drawRight. */
 function segmentMixed(text: string): TextSeg[] {
   const raw = String(text ?? "");
   if (!raw) return [];
@@ -57,6 +58,8 @@ function segmentMixed(text: string): TextSeg[] {
 
   const isArChar = (ch: string) =>
     /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(ch);
+  // Keep colon/comma/space with the current run so "العنوان: 123" stays label+: then digits.
+  const isNeutral = (ch: string) => /[\s:：؛،,\-]/.test(ch);
 
   for (const ch of raw) {
     const next: "ar" | "lt" = isArChar(ch) ? "ar" : "lt";
@@ -65,7 +68,7 @@ function segmentMixed(text: string): TextSeg[] {
       buf = ch;
       continue;
     }
-    if (next === kind || /\s/.test(ch)) {
+    if (isNeutral(ch) || next === kind) {
       buf += ch;
       continue;
     }
@@ -107,8 +110,25 @@ function drawRight(
   }
 }
 
+/** LTR draw — never pass Arabic through Helvetica/WinAnsi. */
 function drawLeft(ctx: DrawCtx, x: number, y: number, text: string, size: number, font = ctx.fontEn, color = BLACK) {
-  ctx.page.drawText(text, { x, y, size, font, color });
+  if (!hasArabic(text)) {
+    ctx.page.drawText(text, { x, y, size, font, color });
+    return;
+  }
+  let cursor = x;
+  for (const seg of segmentMixed(text)) {
+    const drawn = seg.kind === "ar" ? arText(seg.text) : seg.text;
+    if (!drawn) continue;
+    const tw = widthOf(ctx.fontAr, drawn, size);
+    ctx.page.drawText(drawn, { x: cursor, y, size, font: ctx.fontAr, color });
+    cursor += tw;
+  }
+}
+
+function measureLine(ctx: DrawCtx, text: string, size: number, preferEnFont?: PDFFont) {
+  if (hasArabic(text)) return measureMixed(ctx, text, size);
+  return widthOf(preferEnFont ?? ctx.fontEn, text, size);
 }
 
 function drawCentered(ctx: DrawCtx, y: number, text: string, size: number, font: PDFFont, color = NAVY) {
@@ -161,7 +181,7 @@ function drawWrappedEn(ctx: DrawCtx, text: string, x: number, y: number, maxWidt
   let current: string[] = [];
   for (const word of words) {
     const trial = [...current, word].join(" ");
-    if (widthOf(ctx.fontEn, trial, size) <= maxWidth || current.length === 0) current.push(word);
+    if (measureLine(ctx, trial, size) <= maxWidth || current.length === 0) current.push(word);
     else {
       lines.push(current.join(" "));
       current = [word];
@@ -295,7 +315,12 @@ async function embedLogo(pdf: PDFDocument) {
   return null;
 }
 
-function drawArabicOffer(ctx: DrawCtx, offer: JobOffer, logo: Awaited<ReturnType<typeof embedLogo>>) {
+function drawArabicOffer(
+  ctx: DrawCtx,
+  offer: JobOffer,
+  fields: PdfLocaleFields,
+  logo: Awaited<ReturnType<typeof embedLogo>>,
+) {
   const logoBox = drawLogo(ctx, logo);
 
   const companyLines = [
@@ -333,7 +358,6 @@ function drawArabicOffer(ctx: DrawCtx, offer: JobOffer, logo: Awaited<ReturnType
   drawCentered(ctx, boxY + 0.28 * CM, "عرض وظيفي", 16, ctx.fontAr, NAVY);
 
   const date = new Date(offer.sentAt || offer.createdAt || Date.now()).toLocaleDateString("en-GB");
-  const footer = resolveFooterFields(offer);
   const net = offer.netSalary ?? Math.round(offer.totalSalary - offer.insurance);
 
   let y = boxY - 0.85 * CM;
@@ -347,9 +371,9 @@ function drawArabicOffer(ctx: DrawCtx, offer: JobOffer, logo: Awaited<ReturnType
   drawSectionTitleAr(ctx, y, "تفاصيل الوظيفة");
   y -= 0.95 * CM;
   for (const [label, value] of [
-    ["المسمى الوظيفي", offer.jobTitle],
-    ["القسم", offer.department || "—"],
-    ["موقع العمل", offer.location || "—"],
+    ["المسمى الوظيفي", fields.jobTitle],
+    ["القسم", fields.department],
+    ["موقع العمل", fields.location],
   ] as const) {
     drawRight(ctx, ctx.width - 2.3 * CM, y, `${label}: ${value}`, 10.5);
     y -= 0.52 * CM;
@@ -359,11 +383,11 @@ function drawArabicOffer(ctx: DrawCtx, offer: JobOffer, logo: Awaited<ReturnType
   drawSectionTitleAr(ctx, y, "تفاصيل العقد");
   y -= 0.95 * CM;
   for (const [label, value] of [
-    ["نوع العقد", offer.contractType || "—"],
-    ["مدة العقد", offer.contractDuration || "—"],
-    ["أيام العمل", offer.workDays || "—"],
-    ["فترة التجربة", offer.probation || "—"],
-    ["الإجازة السنوية", offer.annualLeave || "—"],
+    ["نوع العقد", fields.contractType],
+    ["مدة العقد", fields.contractDuration],
+    ["أيام العمل", fields.workDays],
+    ["فترة التجربة", fields.probation],
+    ["الإجازة السنوية", fields.annualLeave],
   ] as const) {
     drawRight(ctx, ctx.width - 2.3 * CM, y, `${label}: ${value}`, 10.5);
     y -= 0.52 * CM;
@@ -395,10 +419,10 @@ function drawArabicOffer(ctx: DrawCtx, offer: JobOffer, logo: Awaited<ReturnType
   y -= 0.7 * CM;
 
   for (const block of [
-    footer.footerSalaryReview,
-    footer.footerValidity,
-    footer.footerAcceptance,
-    footer.footerRejection,
+    fields.footerSalaryReview,
+    fields.footerValidity,
+    fields.footerAcceptance,
+    fields.footerRejection,
   ]) {
     if (!block) continue;
     y = drawWrappedAr(ctx, block, ctx.width - MARGIN_X, y, CONTENT_W, 9.2);
@@ -414,7 +438,12 @@ function drawArabicOffer(ctx: DrawCtx, offer: JobOffer, logo: Awaited<ReturnType
   drawRight(ctx, ctx.width - 2.2 * CM, 1.35 * CM, "إدارة الموارد البشرية", 10.5);
 }
 
-function drawEnglishOffer(ctx: DrawCtx, offer: JobOffer, logo: Awaited<ReturnType<typeof embedLogo>>) {
+function drawEnglishOffer(
+  ctx: DrawCtx,
+  offer: JobOffer,
+  fields: PdfLocaleFields,
+  logo: Awaited<ReturnType<typeof embedLogo>>,
+) {
   const logoBox = drawLogo(ctx, logo);
 
   const companyLines = [
@@ -426,7 +455,7 @@ function drawEnglishOffer(ctx: DrawCtx, offer: JobOffer, logo: Awaited<ReturnTyp
   ];
   let hy = ctx.height - 1.35 * CM;
   for (const line of companyLines) {
-    drawLeft(ctx, ctx.width - MARGIN_X - widthOf(ctx.fontEn, line, 10), hy, line, 10, ctx.fontEn, NAVY);
+    drawLeft(ctx, ctx.width - MARGIN_X - measureLine(ctx, line, 10), hy, line, 10, ctx.fontEn, NAVY);
     hy -= 0.46 * CM;
   }
 
@@ -456,7 +485,6 @@ function drawEnglishOffer(ctx: DrawCtx, offer: JobOffer, logo: Awaited<ReturnTyp
     month: "long",
     day: "numeric",
   });
-  const footer = resolveFooterFields(offer);
   const net = offer.netSalary ?? Math.round(offer.totalSalary - offer.insurance);
   const x = MARGIN_X + 0.3 * CM;
 
@@ -467,14 +495,7 @@ function drawEnglishOffer(ctx: DrawCtx, offer: JobOffer, logo: Awaited<ReturnTyp
     ["Document No.", offer.documentNumber || "—"],
   ];
   for (const [label, value] of enRows) {
-    const prefix = `${label}: `;
-    if (hasArabic(value)) {
-      drawLeft(ctx, x, y, prefix, 10);
-      const shaped = arText(value);
-      drawLeft(ctx, x + widthOf(ctx.fontEn, prefix, 10), y, shaped, 10, ctx.fontAr);
-    } else {
-      drawLeft(ctx, x, y, `${prefix}${value}`, 10);
-    }
+    drawLeft(ctx, x, y, `${label}: ${value}`, 10);
     y -= 0.58 * CM;
   }
   y -= 0.17 * CM;
@@ -482,9 +503,9 @@ function drawEnglishOffer(ctx: DrawCtx, offer: JobOffer, logo: Awaited<ReturnTyp
   drawSectionTitleEn(ctx, y, "Job Details");
   y -= 0.9 * CM;
   for (const [label, value] of [
-    ["Job Title", offer.jobTitle],
-    ["Department", offer.department || "—"],
-    ["Work Location", offer.location || "—"],
+    ["Job Title", fields.jobTitle],
+    ["Department", fields.department],
+    ["Work Location", fields.location],
   ] as const) {
     drawLeft(ctx, x, y, `${label}: ${value}`, 10);
     y -= 0.5 * CM;
@@ -494,11 +515,11 @@ function drawEnglishOffer(ctx: DrawCtx, offer: JobOffer, logo: Awaited<ReturnTyp
   drawSectionTitleEn(ctx, y, "Contract Details");
   y -= 0.9 * CM;
   for (const [label, value] of [
-    ["Contract Type", offer.contractType || "—"],
-    ["Duration", offer.contractDuration || "—"],
-    ["Working Days", offer.workDays || "—"],
-    ["Probation Period", offer.probation || "—"],
-    ["Annual Leave", offer.annualLeave || "—"],
+    ["Contract Type", fields.contractType],
+    ["Duration", fields.contractDuration],
+    ["Working Days", fields.workDays],
+    ["Probation Period", fields.probation],
+    ["Annual Leave", fields.annualLeave],
   ] as const) {
     drawLeft(ctx, x, y, `${label}: ${value}`, 10);
     y -= 0.5 * CM;
@@ -530,10 +551,10 @@ function drawEnglishOffer(ctx: DrawCtx, offer: JobOffer, logo: Awaited<ReturnTyp
   y -= 0.65 * CM;
 
   for (const block of [
-    footer.footerSalaryReview,
-    footer.footerValidity,
-    footer.footerAcceptance,
-    footer.footerRejection,
+    fields.footerSalaryReview,
+    fields.footerValidity,
+    fields.footerAcceptance,
+    fields.footerRejection,
   ]) {
     if (!block) continue;
     if (hasArabic(block)) y = drawWrappedAr(ctx, block, ctx.width - MARGIN_X, y, CONTENT_W);
@@ -552,6 +573,9 @@ function drawEnglishOffer(ctx: DrawCtx, offer: JobOffer, logo: Awaited<ReturnTyp
 
 export async function buildOfferPdf(offer: JobOffer): Promise<Uint8Array> {
   const isAr = (offer.language || "العربية") === "العربية";
+  const footer = resolveFooterFields(offer);
+  const fields = await localizeOfferFieldsForPdf(offer, footer);
+
   const pdf = await PDFDocument.create();
   pdf.registerFontkit(fontkit);
   pdf.setTitle("DABOUQ Job Offer");
@@ -572,8 +596,8 @@ export async function buildOfferPdf(offer: JobOffer): Promise<Uint8Array> {
     fontEnBold,
   };
 
-  if (isAr) drawArabicOffer(ctx, offer, logo);
-  else drawEnglishOffer(ctx, offer, logo);
+  if (isAr) drawArabicOffer(ctx, offer, fields, logo);
+  else drawEnglishOffer(ctx, offer, fields, logo);
 
   return pdf.save();
 }

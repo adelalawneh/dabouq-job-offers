@@ -74,12 +74,13 @@ export default async function HomePage({
                 <th className="muted px-3.5 py-3 text-xs font-semibold">صافي الراتب</th>
                 <th className="muted px-3.5 py-3 text-xs font-semibold">الحالة</th>
                 <th className="muted px-3.5 py-3 text-xs font-semibold">التاريخ</th>
+                <th className="muted px-3.5 py-3 text-xs font-semibold">إجراء</th>
               </tr>
             </thead>
             <tbody>
               {offers.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="muted px-3.5 py-8 text-center">
+                  <td colSpan={6} className="muted px-3.5 py-8 text-center">
                     لا توجد عروض بعد.
                   </td>
                 </tr>
@@ -103,6 +104,16 @@ export default async function HomePage({
                     </td>
                     <td className="px-3.5 py-3.5 align-top">
                       {new Date(o.createdAt).toLocaleDateString("ar-SA")}
+                    </td>
+                    <td className="px-3.5 py-3.5 align-top">
+                      <div className="flex flex-wrap gap-2">
+                        <Link href={`/offers/${o.id}`} className="btn btn-secondary !px-2.5 !py-1 text-xs">
+                          عرض
+                        </Link>
+                        <Link href={`/offers/${o.id}/edit`} className="btn btn-primary !px-2.5 !py-1 text-xs">
+                          تعديل
+                        </Link>
+                      </div>
                     </td>
                   </tr>
                 ))

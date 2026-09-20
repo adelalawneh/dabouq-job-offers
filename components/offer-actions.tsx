@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -45,6 +46,9 @@ export function OfferActions({ id, status, token }: { id: string; status: string
       {msg ? <p className="alert-ok">{msg}</p> : null}
       {err ? <p className="alert-error !mb-0">{err}</p> : null}
       <div className="flex flex-wrap gap-2.5">
+        <Link href={`/offers/${id}/edit`} className="btn btn-secondary">
+          تعديل
+        </Link>
         <a href={`/api/offers/${id}/pdf`} className="btn btn-secondary">
           تحميل PDF
         </a>

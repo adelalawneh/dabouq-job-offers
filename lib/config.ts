@@ -45,12 +45,77 @@ export const JOB_TEMPLATES = {
 } as const;
 
 export const DEFAULT_CONTRACT = {
-  contractType: "محدد المدة (فردي)",
-  contractDuration: "سنة",
-  workDays: "6 أيام في الأسبوع - 9 ساعات يوميًا تتضمن ساعة راحة",
-  probation: "90 يومًا",
-  annualLeave: "21 يومًا في السنة",
+  ar: {
+    contractType: "محدد المدة (فردي)",
+    contractDuration: "سنة",
+    workDays: "6 أيام في الأسبوع - 9 ساعات يوميًا تتضمن ساعة راحة",
+    probation: "90 يومًا",
+    annualLeave: "21 يومًا في السنة",
+  },
+  en: {
+    contractType: "Fixed-term (Individual)",
+    contractDuration: "1 Year",
+    workDays: "6 days per week — 9 hours daily including 1 hour break",
+    probation: "90 days",
+    annualLeave: "21 days per year",
+  },
 } as const;
+
+/** Known AR↔EN pairs so PDF/email can localize stored defaults without AI. */
+export const CONTRACT_VALUE_LOCALIZATIONS: Record<string, { ar: string; en: string }> = {
+  "محدد المدة (فردي)": {
+    ar: DEFAULT_CONTRACT.ar.contractType,
+    en: DEFAULT_CONTRACT.en.contractType,
+  },
+  [DEFAULT_CONTRACT.en.contractType]: {
+    ar: DEFAULT_CONTRACT.ar.contractType,
+    en: DEFAULT_CONTRACT.en.contractType,
+  },
+  سنة: {
+    ar: DEFAULT_CONTRACT.ar.contractDuration,
+    en: DEFAULT_CONTRACT.en.contractDuration,
+  },
+  [DEFAULT_CONTRACT.en.contractDuration]: {
+    ar: DEFAULT_CONTRACT.ar.contractDuration,
+    en: DEFAULT_CONTRACT.en.contractDuration,
+  },
+  [DEFAULT_CONTRACT.ar.workDays]: {
+    ar: DEFAULT_CONTRACT.ar.workDays,
+    en: DEFAULT_CONTRACT.en.workDays,
+  },
+  [DEFAULT_CONTRACT.en.workDays]: {
+    ar: DEFAULT_CONTRACT.ar.workDays,
+    en: DEFAULT_CONTRACT.en.workDays,
+  },
+  [DEFAULT_CONTRACT.ar.probation]: {
+    ar: DEFAULT_CONTRACT.ar.probation,
+    en: DEFAULT_CONTRACT.en.probation,
+  },
+  [DEFAULT_CONTRACT.en.probation]: {
+    ar: DEFAULT_CONTRACT.ar.probation,
+    en: DEFAULT_CONTRACT.en.probation,
+  },
+  [DEFAULT_CONTRACT.ar.annualLeave]: {
+    ar: DEFAULT_CONTRACT.ar.annualLeave,
+    en: DEFAULT_CONTRACT.en.annualLeave,
+  },
+  [DEFAULT_CONTRACT.en.annualLeave]: {
+    ar: DEFAULT_CONTRACT.ar.annualLeave,
+    en: DEFAULT_CONTRACT.en.annualLeave,
+  },
+};
+
+export function contractDefaults(language: string) {
+  return language === "English" ? DEFAULT_CONTRACT.en : DEFAULT_CONTRACT.ar;
+}
+
+export function localizeContractValue(value: string | null | undefined, language: string) {
+  const raw = (value || "").trim();
+  if (!raw) return "—";
+  const mapped = CONTRACT_VALUE_LOCALIZATIONS[raw];
+  if (!mapped) return raw;
+  return language === "English" ? mapped.en : mapped.ar;
+}
 
 export const DEFAULT_OFFER_FOOTER = {
   ar: {

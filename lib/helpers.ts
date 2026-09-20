@@ -199,8 +199,22 @@ export function extractJson(text: string): Record<string, string> {
   }
 }
 
-export function computeSalaryFields(totalSalary: number, insurance: number) {
+export function computeSalaryFields(
+  totalSalary: number,
+  insurance: number,
+  overrides?: {
+    basic?: number | null;
+    housing?: number | null;
+    transport?: number | null;
+    netSalary?: number | null;
+  },
+) {
   const { basic, housing, transport } = salarySplit(totalSalary);
   const netSalary = Math.round(totalSalary - insurance);
-  return { basic, housing, transport, netSalary };
+  return {
+    basic: overrides?.basic ?? basic,
+    housing: overrides?.housing ?? housing,
+    transport: overrides?.transport ?? transport,
+    netSalary: overrides?.netSalary ?? netSalary,
+  };
 }
