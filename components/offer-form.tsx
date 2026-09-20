@@ -86,24 +86,9 @@ const initial: FormState = {
   footerRejection: DEFAULT_OFFER_FOOTER.ar.rejection,
 };
 
-/** Recalc total + GOSI from the three manual salary parts. */
-function applyFromParts(f: FormState, keepManualOverrides = false): FormState {
+/** Recalc total + GOSI from the three salary parts. Always refreshes insurance from current % scheme. */
+function applyFromParts(f: FormState): FormState {
   const calc = computeFromComponents(f.basic, f.housing, f.transport, f.gosiSchemeId, f.isSaudi);
-  if (keepManualOverrides && f.manualSalaryEdit) {
-    return {
-      ...f,
-      basic: calc.basic,
-      housing: calc.housing,
-      transport: calc.transport,
-      totalSalary: calc.basic + calc.housing + calc.transport,
-      gosiBase: calc.gosiBase,
-      // keep user overrides for deduction / net / cost
-      employeeDeduction: f.employeeDeduction,
-      companyContribution: f.companyContribution,
-      netSalary: f.netSalary,
-      companyCost: f.companyCost,
-    };
-  }
   return {
     ...f,
     basic: calc.basic,
@@ -188,17 +173,8 @@ function seedToForm(seed?: OfferFormSeed | null): FormState {
     manualSalaryEdit: false,
   };
 
-  const auto = applyFromParts(base);
-  if (seed.insurance != null || seed.netSalary != null) {
-    return {
-      ...auto,
-      employeeDeduction: seed.insurance ?? auto.employeeDeduction,
-      netSalary: seed.netSalary ?? auto.netSalary,
-      companyCost: Math.round(auto.totalSalary + auto.companyContribution),
-      manualSalaryEdit: seed.insurance != null,
-    };
-  }
-  return auto;
+  // Always derive insurance from parts + scheme so edit mode stays consistent with create.
+  return applyFromParts(base);
 }
 
 export function OfferForm({
@@ -221,12 +197,8 @@ export function OfferForm({
   }
 
   function setSalaryPart(key: "basic" | "housing" | "transport", value: number) {
-    setForm((f) =>
-      applyFromParts(
-        { ...f, [key]: value },
-        /* keepManualOverrides */ f.manualSalaryEdit,
-      ),
-    );
+    // Changing any salary part always recalculates GOSI % amounts (manual tweaks can be re-applied after).
+    setForm((f) => applyFromParts({ ...f, [key]: value }));
   }
 
   const scheme = useMemo(
@@ -583,7 +555,7 @@ export function OfferForm({
               });
             }}
           />
-          <span>تعديل يدوي لخصم/مساهمة التأمينات والصافي (اختياري)</span>
+          <span>تعديل يدوي لخصم/مساهمة التأمينات والصافي (اختياري) — أي تغيير على الراتب يعيد الحساب تلقائياً</span>
         </label>
 
         <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[color-mix(in_srgb,var(--success)_8%,white)]">
