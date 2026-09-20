@@ -10,7 +10,9 @@ import {
   looksSaudiNationality,
 } from "@/lib/gosi";
 import { money, salarySplit } from "@/lib/helpers";
+import type { AssistantPatch } from "@/lib/assistant";
 import { AppShell, BackLink, Field, Surface } from "@/components/app-shell";
+import { OfferAssistant } from "@/components/offer-assistant";
 
 type FormState = {
   candidateName: string;
@@ -308,11 +310,55 @@ export function OfferForm({
 
   const breakdownLocked = !form.manualSalaryEdit;
 
+  function applyAssistantPatch(patch: AssistantPatch) {
+    setForm((f) =>
+      applyFromParts({
+        ...f,
+        ...patch,
+        manualSalaryEdit: false,
+      }),
+    );
+  }
+
   return (
     <AppShell title={mode === "edit" ? "تعديل العرض الوظيفي" : "إنشاء عرض وظيفي"} narrow>
       <BackLink />
 
       {error ? <p className="alert-error">{error}</p> : null}
+
+      <OfferAssistant
+        formSnapshot={{
+          candidateName: form.candidateName,
+          candidateEmail: form.candidateEmail,
+          candidateNationality: form.candidateNationality,
+          documentNumber: form.documentNumber,
+          jobTitle: form.jobTitle,
+          department: form.department,
+          location: form.location,
+          contractType: form.contractType,
+          contractDuration: form.contractDuration,
+          workDays: form.workDays,
+          probation: form.probation,
+          annualLeave: form.annualLeave,
+          basic: form.basic,
+          housing: form.housing,
+          transport: form.transport,
+          isSaudi: form.isSaudi,
+          gosiSchemeId: form.gosiSchemeId,
+          language: form.language,
+          footerSalaryReview: form.footerSalaryReview,
+          footerValidity: form.footerValidity,
+          footerAcceptance: form.footerAcceptance,
+          footerRejection: form.footerRejection,
+          totalSalary: form.totalSalary,
+          gosiBase: form.gosiBase,
+          employeeDeduction: form.employeeDeduction,
+          companyContribution: form.companyContribution,
+          netSalary: form.netSalary,
+          companyCost: form.companyCost,
+        }}
+        onApplyPatch={applyAssistantPatch}
+      />
 
       <Surface className="mb-3.5">
         <h2 className="mb-3 mt-0 text-sm font-semibold">قوالب سريعة</h2>

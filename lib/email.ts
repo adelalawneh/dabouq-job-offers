@@ -23,7 +23,7 @@ function offerEmailHtml(offer: JobOffer, url: string) {
           <p style="margin:8px 0 0;opacity:.8;font-size:13px">${COMPANY.nameAr}</p>
         </div>
         <div style="padding:28px;color:#1a1a2e;line-height:1.7">
-          <p>السيد/ <strong>${offer.candidateName}</strong> المحترم،</p>
+          <p>السيد/ة <strong>${offer.candidateName}</strong> المحترم/ة،</p>
           <p>يسعدنا إبلاغكم بأنه تم إعداد عرض وظيفي لكم بمسمى <strong>${offer.jobTitle}</strong>
           براتب صافي <strong>${money(net)} ريال سعودي</strong>.</p>
           <p>يرجى الاطلاع على المرفق والرد خلال <strong>${OFFER_VALIDITY_DAYS} أيام</strong>.</p>
@@ -41,7 +41,7 @@ function offerEmailHtml(offer: JobOffer, url: string) {
         <p style="margin:8px 0 0;opacity:.8;font-size:13px">${COMPANY.nameEn}</p>
       </div>
       <div style="padding:28px;color:#1a1a2e;line-height:1.7">
-        <p>Dear <strong>${offer.candidateName}</strong>,</p>
+        <p>Dear Mr./Ms. <strong>${offer.candidateName}</strong>,</p>
         <p>We are pleased to share a job offer for <strong>${offer.jobTitle}</strong>
         with a net salary of <strong>${money(net)} SAR</strong>.</p>
         <p>Please review the attached PDF and respond within <strong>${OFFER_VALIDITY_DAYS} days</strong>.</p>

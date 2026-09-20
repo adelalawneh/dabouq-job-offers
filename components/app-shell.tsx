@@ -2,11 +2,11 @@ import Image from "next/image";
 import Link from "next/link";
 
 function portalHomeUrl() {
-  return (
-    process.env.NEXT_PUBLIC_PORTAL_URL ||
-    process.env.PORTAL_URL ||
-    "https://www.dabouqtools.com"
-  ).replace(/\/$/, "");
+  // Client + server must match: only NEXT_PUBLIC_* is available in the browser.
+  return (process.env.NEXT_PUBLIC_PORTAL_URL || "https://www.dabouqtools.com").replace(
+    /\/$/,
+    "",
+  );
 }
 
 export function AppShell({

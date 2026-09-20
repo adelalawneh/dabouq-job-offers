@@ -7,7 +7,7 @@ export const COMPANY = {
   taxId: "311280392800003",
 } as const;
 
-export const OFFER_VALIDITY_DAYS = 10;
+export const OFFER_VALIDITY_DAYS = 3;
 
 export const STATUS_LABELS: Record<string, string> = {
   draft: "مسودة",
@@ -46,9 +46,9 @@ export const JOB_TEMPLATES = {
 
 export const DEFAULT_CONTRACT = {
   ar: {
-    contractType: "محدد المدة (فردي)",
+    contractType: "محدد المدة - فردي",
     contractDuration: "سنة",
-    workDays: "6 أيام في الأسبوع - 9 ساعات يوميًا تتضمن ساعة راحة",
+    workDays: "6 أيام في الأسبوع – 9 ساعات يوميًا تتضمن ساعة راحة",
     probation: "90 يومًا",
     annualLeave: "21 يومًا في السنة",
   },
@@ -63,6 +63,10 @@ export const DEFAULT_CONTRACT = {
 
 /** Known AR↔EN pairs so PDF/email can localize stored defaults without AI. */
 export const CONTRACT_VALUE_LOCALIZATIONS: Record<string, { ar: string; en: string }> = {
+  "محدد المدة - فردي": {
+    ar: DEFAULT_CONTRACT.ar.contractType,
+    en: DEFAULT_CONTRACT.en.contractType,
+  },
   "محدد المدة (فردي)": {
     ar: DEFAULT_CONTRACT.ar.contractType,
     en: DEFAULT_CONTRACT.en.contractType,
@@ -120,16 +124,37 @@ export function localizeContractValue(value: string | null | undefined, language
 export const DEFAULT_OFFER_FOOTER = {
   ar: {
     salaryReview:
-      "سيتم مراجعة الراتب بعد مرور ثلاثة (3) أشهر من تاريخ مباشرة العمل، وذلك لغرض النظر في إمكانية زيادة الراتب وتثبيت الموظف بناءً على تقييم الأداء.",
-    validity: "ويُعتبر هذا العرض ساري المفعول لمدة عشرة (10) أيام فقط من تاريخ صدوره.",
-    acceptance: "أوافق على ما ورد أعلاه، وأقر بأن تاريخ بدء عملي سيكون اعتبارًا من:      /      / ٢٠٢٦",
-    rejection: "لا أوافق على العرض المذكور أعلاه للأسباب التالية: ........................................................",
+      "بعد مرور ثلاثة (3) أشهر من تاريخ مباشرة العمل، يتم تقييم أداء الموظف ومراجعة راتبه، ويكون أي تعديل على الراتب خاضعًا لنتيجة التقييم واحتياجات العمل وموافقة الشركة، دون أن يترتب على هذه المراجعة أي استحقاق تلقائي لزيادة الراتب.",
+    validity:
+      "يُعتبر هذا العرض ساري المفعول لمدة ثلاثة (3) أيام فقط من تاريخ صدوره، ويُلغى تلقائيًا بعد انتهاء هذه المدة ما لم توافق الشركة على تمديده.",
+    notice:
+      "يُعد هذا العرض الوظيفي عرضًا مبدئيًا، ولا يُنشئ علاقة تعاقدية أو التزامًا نهائيًا على الشركة، ولا تصبح علاقة العمل نافذة وملزمة إلا بعد توقيع عقد العمل من الطرفين واستكمال متطلبات وإجراءات التوظيف المعتمدة لدى الشركة.",
+    acceptance:
+      "أوافق على ما ورد في هذا العرض، وأقر بأن تاريخ بدء عملي سيكون اعتبارًا من: ____ / ____ / ______م",
+    rejection: "لا أوافق على العرض المذكور أعلاه، للأسباب التالية:",
   },
   en: {
     salaryReview:
-      "Salary will be reviewed after three (3) months from the date of joining, for the purpose of considering a salary increase and confirmation based on performance evaluation.",
-    validity: "This offer is valid for ten (10) days only from the date of issuance.",
-    acceptance: "I agree to the terms above. My start date will be: ____ / ____ / 2026",
-    rejection: "I do not agree to the above offer for the following reasons: ........................................................",
+      "After three (3) months from the start date, the employee’s performance and salary will be reviewed. Any salary change is subject to the evaluation result, business needs, and company approval, and this review does not create an automatic entitlement to an increase.",
+    validity:
+      "This offer is valid for three (3) days only from the date of issuance, and it is automatically cancelled after that period unless the company agrees to extend it.",
+    notice:
+      "This job offer is preliminary and does not create a final contractual relationship or binding obligation on the company. Employment becomes effective and binding only after both parties sign the employment contract and complete the company’s hiring requirements and procedures.",
+    acceptance:
+      "I agree to the terms of this offer, and I confirm that my start date will be: ____ / ____ / ________",
+    rejection: "I do not agree to the above offer, for the following reasons:",
+  },
+} as const;
+
+export const OFFER_BENEFITS = {
+  ar: {
+    medical: "التأمين الطبي: وفقًا للأنظمة والسياسات المعتمدة لدى الشركة.",
+    other: "مزايا أخرى: حسب السياسات الداخلية المعتمدة لدى الشركة.",
+    deductionsNote: "تطبق الاستقطاعات النظامية – إن وجدت – وفقًا للأنظمة المعمول بها.",
+  },
+  en: {
+    medical: "Medical insurance: As per the company’s approved regulations and policies.",
+    other: "Other benefits: As per the company’s approved internal policies.",
+    deductionsNote: "Statutory deductions – if any – apply in accordance with applicable regulations.",
   },
 } as const;

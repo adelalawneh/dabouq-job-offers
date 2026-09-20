@@ -4,24 +4,38 @@ import { PDFDocument, rgb, StandardFonts, type PDFFont, type PDFPage } from "pdf
 import fontkit from "@pdf-lib/fontkit";
 import { ArabicShaper } from "arabic-persian-reshaper";
 import type { JobOffer } from "@/lib/db";
-import { COMPANY } from "./config";
-import { money, salaryArWords, salaryEnWords, resolveFooterFields } from "./helpers";
+import { COMPANY, DEFAULT_OFFER_FOOTER, OFFER_BENEFITS } from "./config";
+import { money, resolveFooterFields } from "./helpers";
 import { localizeOfferFieldsForPdf, type PdfLocaleFields } from "./translate";
 
 const A4: [number, number] = [595.28, 841.89];
 const CM = 28.35;
 const MARGIN_X = 2 * CM;
 const CONTENT_W = A4[0] - 4 * CM;
+const PAGE_BOTTOM = 1.6 * CM;
+const PAGE_TOP = A4[1] - 1.4 * CM;
 const NAVY = rgb(0.06, 0.13, 0.23);
 const LINE_GRAY = rgb(0.8, 0.83, 0.88);
 const ROW_BG = rgb(0.94, 0.96, 0.98);
 const WHITE = rgb(1, 1, 1);
 const BLACK = rgb(0, 0, 0);
 
+/** Normalize punctuation that often breaks Arabic PDF fonts / BiDi. */
+function sanitizePdfText(text: string) {
+  return String(text ?? "")
+    .replace(/[\u2013\u2014\u2212]/g, "-")
+    .replace(/[\u2018\u2019\u201C\u201D]/g, "'")
+    .replace(/\u00A0/g, " ")
+    // Keep "(3)" as one LTR unit so the digit stays inside the parentheses in RTL layout.
+    .replace(/\(\s*(\d+)\s*\)/g, "\u200E($1)\u200E")
+    .trim();
+}
+
 /**
  * Shape Arabic letter forms for pdf-lib.
  * Do NOT run a bidi visual reorder here — with right-aligned drawText that
  * double-flips the line and produces scrambled glyphs.
+ * Do NOT swap () globally — that pulls digits out of "(3)" and leaves empty parens.
  */
 function arText(text: string): string {
   const raw = String(text ?? "");
@@ -56,12 +70,33 @@ function segmentMixed(text: string): TextSeg[] {
   let buf = "";
   let kind: "ar" | "lt" | null = null;
 
+  const isArDigit = (ch: string) => /[\u0660-\u0669\u06F0-\u06F9]/.test(ch);
   const isArChar = (ch: string) =>
+    !isArDigit(ch) &&
     /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(ch);
-  // Keep colon/comma/space with the current run so "العنوان: 123" stays label+: then digits.
-  const isNeutral = (ch: string) => /[\s:：؛،,\-]/.test(ch);
+  // Keep colon/comma/space/slash with the current run. Parentheses around numbers are handled below.
+  const isNeutral = (ch: string) => /[\s:：؛،,\-\/\u200E\u200F]/.test(ch);
 
-  for (const ch of raw) {
+  const flush = () => {
+    if (buf && kind) segs.push({ text: buf, kind });
+    buf = "";
+    kind = null;
+  };
+
+  for (let i = 0; i < raw.length; i++) {
+    // Keep "(123)" / "\u200E(123)\u200E" as one Latin token so the digit stays inside.
+    if (raw[i] === "(" || raw[i] === "\u200E") {
+      const slice = raw.slice(i);
+      const m = slice.match(/^(?:\u200E)?\(\s*(\d+)\s*\)(?:\u200E)?/);
+      if (m) {
+        flush();
+        segs.push({ text: `(${m[1]})`, kind: "lt" });
+        i += m[0].length - 1;
+        continue;
+      }
+    }
+
+    const ch = raw[i]!;
     const next: "ar" | "lt" = isArChar(ch) ? "ar" : "lt";
     if (kind === null) {
       kind = next;
@@ -72,18 +107,17 @@ function segmentMixed(text: string): TextSeg[] {
       buf += ch;
       continue;
     }
-    segs.push({ text: buf, kind });
-    buf = ch;
+    flush();
     kind = next;
+    buf = ch;
   }
-  if (buf && kind) segs.push({ text: buf, kind });
+  flush();
   return segs;
 }
 
 function measureMixed(ctx: DrawCtx, text: string, size: number) {
   let w = 0;
-  for (const seg of segmentMixed(text)) {
-    // Same Arabic typeface for digits — Helvetica looked thin next to Arabic.
+  for (const seg of segmentMixed(sanitizePdfText(text))) {
     const drawn = seg.kind === "ar" ? arText(seg.text) : seg.text;
     w += widthOf(ctx.fontAr, drawn, size);
   }
@@ -101,7 +135,7 @@ function drawRight(
   color = BLACK,
 ) {
   let cursor = x;
-  for (const seg of segmentMixed(text)) {
+  for (const seg of segmentMixed(sanitizePdfText(text))) {
     const drawn = seg.kind === "ar" ? arText(seg.text) : seg.text;
     if (!drawn) continue;
     const tw = widthOf(ctx.fontAr, drawn, size);
@@ -167,11 +201,205 @@ function wrapByWidth(ctx: DrawCtx, text: string, maxWidth: number, size: number)
 
 function drawWrappedAr(ctx: DrawCtx, text: string, xRight: number, y: number, maxWidth: number, size = 8.7, gap = 0.48 * CM) {
   let yy = y;
-  for (const line of wrapByWidth(ctx, text, maxWidth, size)) {
+  for (const line of wrapByWidth(ctx, sanitizePdfText(text), maxWidth, size)) {
     drawRight(ctx, xRight, yy, line, size);
     yy -= gap;
   }
   return yy;
+}
+
+type OfferFlow = {
+  pdf: PDFDocument;
+  ctx: DrawCtx;
+  y: number;
+};
+
+function startNewContentPage(flow: OfferFlow) {
+  const page = flow.pdf.addPage(A4);
+  flow.ctx = { ...flow.ctx, page };
+  flow.y = PAGE_TOP;
+  drawRight(flow.ctx, flow.ctx.width - MARGIN_X, flow.y, "عرض وظيفي - تابع", 9, flow.ctx.fontAr, NAVY);
+  flow.y -= 0.7 * CM;
+}
+
+function ensureSpace(flow: OfferFlow, needed: number) {
+  if (flow.y - needed < PAGE_BOTTOM) startNewContentPage(flow);
+}
+
+function drawArSection(flow: OfferFlow, title: string) {
+  ensureSpace(flow, 1.4 * CM);
+  drawSectionTitleAr(flow.ctx, flow.y, title);
+  flow.y -= 0.78 * CM;
+}
+
+function drawArKv(flow: OfferFlow, label: string, value: string, size = 9.5) {
+  const line = sanitizePdfText(`${label}: ${value || "—"}`);
+  const lines = wrapByWidth(flow.ctx, line, CONTENT_W - 0.3 * CM, size);
+  for (const row of lines) {
+    ensureSpace(flow, 0.55 * CM);
+    drawRight(flow.ctx, flow.ctx.width - 2.3 * CM, flow.y, row, size);
+    flow.y -= 0.42 * CM;
+  }
+}
+
+function drawArParagraph(flow: OfferFlow, text: string, size = 8.6) {
+  const gap = 0.4 * CM;
+  for (const line of wrapByWidth(flow.ctx, sanitizePdfText(text), CONTENT_W, size)) {
+    ensureSpace(flow, gap + 0.1 * CM);
+    drawRight(flow.ctx, flow.ctx.width - MARGIN_X, flow.y, line, size);
+    flow.y -= gap;
+  }
+}
+
+function drawSalaryTableArFlow(flow: OfferFlow, rows: [string, string][]) {
+  const rowH = 0.62 * CM;
+  const tableW = flow.ctx.width - 4 * CM;
+  const x = 2 * CM;
+  ensureSpace(flow, rows.length * rowH + 0.3 * CM);
+  rows.forEach(([label, value], i) => {
+    const yy = flow.y - i * rowH;
+    if (i === rows.length - 1) {
+      flow.ctx.page.drawRectangle({
+        x,
+        y: yy - rowH + 0.1 * CM,
+        width: tableW,
+        height: rowH,
+        color: ROW_BG,
+        borderWidth: 0,
+      });
+    }
+    flow.ctx.page.drawRectangle({
+      x,
+      y: yy - rowH + 0.1 * CM,
+      width: tableW,
+      height: rowH,
+      borderColor: LINE_GRAY,
+      borderWidth: 0.7,
+    });
+    drawRight(flow.ctx, flow.ctx.width - 2.4 * CM, yy - 0.34 * CM, sanitizePdfText(label), 9);
+    drawRight(flow.ctx, flow.ctx.width - 10.2 * CM, yy - 0.34 * CM, sanitizePdfText(value), 9);
+  });
+  flow.y -= rows.length * rowH + 0.16 * CM;
+}
+
+function drawArabicOffer(
+  flow: OfferFlow,
+  offer: JobOffer,
+  fields: PdfLocaleFields,
+  logo: Awaited<ReturnType<typeof embedLogo>>,
+) {
+  const ctx = flow.ctx;
+  const logoBox = drawLogo(ctx, logo);
+
+  const companyLines = [
+    COMPANY.nameAr,
+    `رقم المنشأة: ${COMPANY.establishmentNo}`,
+    `س.ت: ${COMPANY.cr}`,
+    `هاتف: ${COMPANY.phone}`,
+    `الرقم الضريبي: ${COMPANY.taxId}`,
+  ];
+  let hy = ctx.height - 1.15 * CM;
+  for (const line of companyLines) {
+    drawRight(ctx, ctx.width - MARGIN_X, hy, line, 9, ctx.fontAr, NAVY);
+    hy -= 0.4 * CM;
+  }
+
+  const ruleY = Math.min(logoBox.bottom, hy) - 0.35 * CM;
+  ctx.page.drawLine({
+    start: { x: MARGIN_X, y: ruleY },
+    end: { x: ctx.width - MARGIN_X, y: ruleY },
+    thickness: 2,
+    color: NAVY,
+  });
+
+  const boxW = 5.2 * CM;
+  const boxH = 0.78 * CM;
+  const boxY = ruleY - 1.0 * CM;
+  ctx.page.drawRectangle({
+    x: ctx.width / 2 - boxW / 2,
+    y: boxY,
+    width: boxW,
+    height: boxH,
+    borderColor: NAVY,
+    borderWidth: 1.2,
+  });
+  drawCentered(ctx, boxY + 0.22 * CM, "عرض وظيفي", 15, ctx.fontAr, NAVY);
+
+  const date = new Date(offer.sentAt || offer.createdAt || Date.now()).toLocaleDateString("en-GB");
+  flow.y = boxY - 0.7 * CM;
+
+  drawArKv(flow, "التاريخ", date, 10);
+  drawArKv(flow, "إلى السيد/ة", `${sanitizePdfText(offer.candidateName)} المحترم/ة`, 10);
+  drawArKv(flow, "رقم الإقامة / الوثيقة", offer.documentNumber || "—", 10);
+  flow.y -= 0.12 * CM;
+
+  drawArSection(flow, "تفاصيل الوظيفة");
+  drawArKv(flow, "المسمى الوظيفي", fields.jobTitle);
+  drawArKv(flow, "القسم", fields.department);
+  drawArKv(flow, "موقع العمل", fields.location);
+  flow.y -= 0.1 * CM;
+
+  drawArSection(flow, "تفاصيل العقد");
+  drawArKv(flow, "نوع العقد", fields.contractType);
+  drawArKv(flow, "مدة العقد", fields.contractDuration);
+  drawArKv(flow, "أيام العمل", fields.workDays);
+  drawArKv(flow, "فترة التجربة", fields.probation);
+  drawArKv(flow, "الإجازة السنوية", fields.annualLeave);
+  flow.y -= 0.1 * CM;
+
+  drawArSection(flow, "تفاصيل الراتب الشهري");
+  drawSalaryTableArFlow(flow, [
+    ["الراتب الأساسي", `${money(offer.basic ?? 0)} ريال سعودي`],
+    ["بدل السكن", `${money(offer.housing ?? 0)} ريال سعودي`],
+    ["بدل النقل", `${money(offer.transport ?? 0)} ريال سعودي`],
+    ["إجمالي الراتب", `${money(offer.totalSalary)} ريال سعودي`],
+  ]);
+  drawArParagraph(flow, OFFER_BENEFITS.ar.deductionsNote, 8.5);
+  flow.y -= 0.16 * CM;
+
+  drawArSection(flow, "المزايا");
+  drawArParagraph(flow, OFFER_BENEFITS.ar.medical, 9);
+  drawArParagraph(flow, OFFER_BENEFITS.ar.other, 9);
+  flow.y -= 0.12 * CM;
+
+  drawArSection(flow, "مراجعة الراتب");
+  drawArParagraph(flow, fields.footerSalaryReview);
+  flow.y -= 0.1 * CM;
+
+  drawArSection(flow, "صلاحية العرض");
+  drawArParagraph(flow, fields.footerValidity);
+  flow.y -= 0.1 * CM;
+
+  drawArSection(flow, "تنويه");
+  drawArParagraph(flow, DEFAULT_OFFER_FOOTER.ar.notice);
+  flow.y -= 0.1 * CM;
+
+  drawArSection(flow, "قبول العرض");
+  drawArParagraph(flow, `[ ] ${fields.footerAcceptance}`, 8.8);
+  flow.y -= 0.08 * CM;
+  drawArParagraph(flow, `[ ] ${fields.footerRejection}`, 8.8);
+  drawArParagraph(flow, "....................................................................................", 9);
+  flow.y -= 0.12 * CM;
+
+  for (const line of [
+    "اسم الموظف: ........................................................",
+    "التوقيع: ..............................................................",
+    "التاريخ: ____ / ____ / ______م",
+  ]) {
+    ensureSpace(flow, 0.5 * CM);
+    drawRight(flow.ctx, flow.ctx.width - 2.3 * CM, flow.y, line, 9);
+    flow.y -= 0.4 * CM;
+  }
+  flow.y -= 0.12 * CM;
+  for (const line of [
+    "اعتماد إدارة الموارد البشرية: ....................................",
+    "التوقيع: ..............................................................",
+    "التاريخ: ____ / ____ / ______م",
+  ]) {
+    ensureSpace(flow, 0.5 * CM);
+    drawRight(flow.ctx, flow.ctx.width - 2.3 * CM, flow.y, line, 9);
+    flow.y -= 0.4 * CM;
+  }
 }
 
 function drawWrappedEn(ctx: DrawCtx, text: string, x: number, y: number, maxWidth: number, size = 8.7, gap = 0.48 * CM) {
@@ -197,9 +425,9 @@ function drawWrappedEn(ctx: DrawCtx, text: string, x: number, y: number, maxWidt
 
 function drawLogo(ctx: DrawCtx, logo: Awaited<ReturnType<PDFDocument["embedPng"]>> | null) {
   if (!logo) return { height: 0, bottom: ctx.height - 1.2 * CM };
-  // Larger mark — height-first so it reads stronger without covering company text.
-  const maxW = 11.5 * CM;
-  const maxH = 3.15 * CM;
+  // Strong header mark — multipage flow keeps the body from clipping.
+  const maxW = 12 * CM;
+  const maxH = 3.1 * CM;
   const aspect = logo.width / Math.max(logo.height, 1);
   let drawH = Math.min(maxH, maxW / aspect);
   let drawW = drawH * aspect;
@@ -207,7 +435,7 @@ function drawLogo(ctx: DrawCtx, logo: Awaited<ReturnType<PDFDocument["embedPng"]
     drawW = maxW;
     drawH = drawW / aspect;
   }
-  const top = ctx.height - 0.85 * CM;
+  const top = ctx.height - 0.75 * CM;
   const bottom = top - drawH;
   ctx.page.drawImage(logo, { x: MARGIN_X, y: bottom, width: drawW, height: drawH });
   return { height: drawH, bottom };
@@ -315,133 +543,6 @@ async function embedLogo(pdf: PDFDocument) {
   return null;
 }
 
-function drawArabicOffer(
-  ctx: DrawCtx,
-  offer: JobOffer,
-  fields: PdfLocaleFields,
-  logo: Awaited<ReturnType<typeof embedLogo>>,
-) {
-  const logoBox = drawLogo(ctx, logo);
-
-  const companyLines = [
-    COMPANY.nameAr,
-    `رقم المنشأة: ${COMPANY.establishmentNo}`,
-    `س.ت: ${COMPANY.cr}`,
-    `هاتف: ${COMPANY.phone}`,
-    `الرقم الضريبي: ${COMPANY.taxId}`,
-  ];
-  let hy = ctx.height - 1.35 * CM;
-  for (const line of companyLines) {
-    drawRight(ctx, ctx.width - MARGIN_X, hy, line, 10, ctx.fontAr, NAVY);
-    hy -= 0.46 * CM;
-  }
-
-  const ruleY = Math.min(logoBox.bottom, hy) - 0.45 * CM;
-  ctx.page.drawLine({
-    start: { x: MARGIN_X, y: ruleY },
-    end: { x: ctx.width - MARGIN_X, y: ruleY },
-    thickness: 2,
-    color: NAVY,
-  });
-
-  const boxW = 5.6 * CM;
-  const boxH = 0.9 * CM;
-  const boxY = ruleY - 1.15 * CM;
-  ctx.page.drawRectangle({
-    x: ctx.width / 2 - boxW / 2,
-    y: boxY,
-    width: boxW,
-    height: boxH,
-    borderColor: NAVY,
-    borderWidth: 1.2,
-  });
-  drawCentered(ctx, boxY + 0.28 * CM, "عرض وظيفي", 16, ctx.fontAr, NAVY);
-
-  const date = new Date(offer.sentAt || offer.createdAt || Date.now()).toLocaleDateString("en-GB");
-  const net = offer.netSalary ?? Math.round(offer.totalSalary - offer.insurance);
-
-  let y = boxY - 0.85 * CM;
-  drawRight(ctx, ctx.width - 2 * CM, y, `التاريخ: ${date}`, 11);
-  y -= 0.66 * CM;
-  drawRight(ctx, ctx.width - 2 * CM, y, `إلى السيد: ${offer.candidateName} المحترم،،،`, 11);
-  y -= 0.66 * CM;
-  drawRight(ctx, ctx.width - 2 * CM, y, `رقم الإقامة / الوثيقة: ${offer.documentNumber || "—"}`, 11);
-  y -= 0.8 * CM;
-
-  drawSectionTitleAr(ctx, y, "تفاصيل الوظيفة");
-  y -= 0.95 * CM;
-  for (const [label, value] of [
-    ["المسمى الوظيفي", fields.jobTitle],
-    ["القسم", fields.department],
-    ["موقع العمل", fields.location],
-  ] as const) {
-    drawRight(ctx, ctx.width - 2.3 * CM, y, `${label}: ${value}`, 10.5);
-    y -= 0.52 * CM;
-  }
-  y -= 0.28 * CM;
-
-  drawSectionTitleAr(ctx, y, "تفاصيل العقد");
-  y -= 0.95 * CM;
-  for (const [label, value] of [
-    ["نوع العقد", fields.contractType],
-    ["مدة العقد", fields.contractDuration],
-    ["أيام العمل", fields.workDays],
-    ["فترة التجربة", fields.probation],
-    ["الإجازة السنوية", fields.annualLeave],
-  ] as const) {
-    drawRight(ctx, ctx.width - 2.3 * CM, y, `${label}: ${value}`, 10.5);
-    y -= 0.52 * CM;
-  }
-  y -= 0.28 * CM;
-
-  drawSectionTitleAr(ctx, y, "تفاصيل الراتب الشهري");
-  y -= 0.9 * CM;
-  y = drawSalaryTableAr(
-    ctx,
-    [
-      ["الراتب الأساسي", `${money(offer.basic ?? 0)} ريال سعودي`],
-      ["بدل السكن", `${money(offer.housing ?? 0)} ريال سعودي`],
-      ["بدل النقل", `${money(offer.transport ?? 0)} ريال سعودي`],
-      ["إجمالي الراتب", `${money(offer.totalSalary)} ريال سعودي`],
-      [
-        "الأجر الخاضع للتأمينات (أساسي + سكن)",
-        `${money((offer.basic ?? 0) + (offer.housing ?? 0))} ريال سعودي`,
-      ],
-      ["خصم التأمينات (على الأساسي + السكن)", `${money(offer.insurance)} ريال سعودي`],
-      ["صافي الراتب", `${money(net)} ريال سعودي`],
-    ],
-    y,
-  );
-  drawRight(ctx, ctx.width - 2.3 * CM, y, `صافي الراتب كتابة: فقط ${salaryArWords(net)}`, 10);
-  y -= 0.78 * CM;
-
-  drawSectionTitleAr(ctx, y, "المزايا");
-  y -= 0.95 * CM;
-  drawRight(ctx, ctx.width - 2.3 * CM, y, "التأمين الطبي: يُوفر وفقًا لمتطلبات الوظيفة", 10.5);
-  y -= 0.52 * CM;
-  drawRight(ctx, ctx.width - 2.3 * CM, y, "مزايا أخرى: حسب السياسات الداخلية للشركة", 10.5);
-  y -= 0.7 * CM;
-
-  for (const block of [
-    fields.footerSalaryReview,
-    fields.footerValidity,
-    fields.footerAcceptance,
-    fields.footerRejection,
-  ]) {
-    if (!block) continue;
-    y = drawWrappedAr(ctx, block, ctx.width - MARGIN_X, y, CONTENT_W, 9.2);
-    y -= 0.14 * CM;
-  }
-
-  ctx.page.drawLine({
-    start: { x: 2 * CM, y: 2.35 * CM },
-    end: { x: ctx.width - 2 * CM, y: 2.35 * CM },
-    thickness: 1,
-    color: NAVY,
-  });
-  drawRight(ctx, ctx.width - 2.2 * CM, 1.35 * CM, "إدارة الموارد البشرية", 10.5);
-}
-
 function drawEnglishOffer(
   ctx: DrawCtx,
   offer: JobOffer,
@@ -489,35 +590,34 @@ function drawEnglishOffer(
     month: "long",
     day: "numeric",
   });
-  const net = offer.netSalary ?? Math.round(offer.totalSalary - offer.insurance);
   const x = MARGIN_X + 0.3 * CM;
 
   let y = boxY - 0.85 * CM;
   const enRows: [string, string][] = [
     ["Date", date],
-    ["To", `Mr. ${offer.candidateName}`],
+    ["To", `Mr./Ms. ${offer.candidateName}`],
     ["Document No.", offer.documentNumber || "—"],
   ];
   for (const [label, value] of enRows) {
     drawLeft(ctx, x, y, `${label}: ${value}`, 10);
-    y -= 0.58 * CM;
+    y -= 0.52 * CM;
   }
-  y -= 0.17 * CM;
+  y -= 0.14 * CM;
 
   drawSectionTitleEn(ctx, y, "Job Details");
-  y -= 0.9 * CM;
+  y -= 0.82 * CM;
   for (const [label, value] of [
     ["Job Title", fields.jobTitle],
     ["Department", fields.department],
     ["Work Location", fields.location],
   ] as const) {
     drawLeft(ctx, x, y, `${label}: ${value}`, 10);
-    y -= 0.5 * CM;
+    y -= 0.46 * CM;
   }
-  y -= 0.25 * CM;
+  y -= 0.18 * CM;
 
   drawSectionTitleEn(ctx, y, "Contract Details");
-  y -= 0.9 * CM;
+  y -= 0.82 * CM;
   for (const [label, value] of [
     ["Contract Type", fields.contractType],
     ["Duration", fields.contractDuration],
@@ -526,12 +626,12 @@ function drawEnglishOffer(
     ["Annual Leave", fields.annualLeave],
   ] as const) {
     drawLeft(ctx, x, y, `${label}: ${value}`, 10);
-    y -= 0.5 * CM;
+    y -= 0.46 * CM;
   }
-  y -= 0.25 * CM;
+  y -= 0.18 * CM;
 
   drawSectionTitleEn(ctx, y, "Monthly Salary Details");
-  y -= 0.85 * CM;
+  y -= 0.78 * CM;
   y = drawSalaryTableEn(
     ctx,
     [
@@ -539,44 +639,60 @@ function drawEnglishOffer(
       ["Housing Allowance", `${money(offer.housing ?? 0)} SAR`],
       ["Transport Allowance", `${money(offer.transport ?? 0)} SAR`],
       ["Gross Salary", `${money(offer.totalSalary)} SAR`],
-      [
-        "GOSI Wage Base (Basic + Housing)",
-        `${money((offer.basic ?? 0) + (offer.housing ?? 0))} SAR`,
-      ],
-      ["GOSI Deduction (on Basic + Housing)", `${money(offer.insurance)} SAR`],
-      ["Net Salary", `${money(net)} SAR`],
     ],
     y,
   );
-  y = drawWrappedEn(ctx, `Salary in Words: ${salaryEnWords(net)}`, x, y, CONTENT_W, 9.4, 0.42 * CM);
-  y -= 0.35 * CM;
+  y = drawWrappedEn(ctx, OFFER_BENEFITS.en.deductionsNote, x, y, CONTENT_W, 9, 0.4 * CM);
+  y -= 0.22 * CM;
 
   drawSectionTitleEn(ctx, y, "Benefits");
-  y -= 0.9 * CM;
-  drawLeft(ctx, x, y, "Medical Insurance: Provided as per job requirements", 10);
+  y -= 0.82 * CM;
+  drawLeft(ctx, x, y, OFFER_BENEFITS.en.medical, 9.5);
+  y -= 0.46 * CM;
+  drawLeft(ctx, x, y, OFFER_BENEFITS.en.other, 9.5);
   y -= 0.5 * CM;
-  drawLeft(ctx, x, y, "Other Benefits: As per company internal policies", 10);
-  y -= 0.65 * CM;
 
-  for (const block of [
-    fields.footerSalaryReview,
-    fields.footerValidity,
-    fields.footerAcceptance,
-    fields.footerRejection,
+  drawSectionTitleEn(ctx, y, "Salary Review");
+  y -= 0.78 * CM;
+  y = drawWrappedEn(ctx, fields.footerSalaryReview, x, y, CONTENT_W, 8.8);
+  y -= 0.18 * CM;
+
+  drawSectionTitleEn(ctx, y, "Offer Validity");
+  y -= 0.78 * CM;
+  y = drawWrappedEn(ctx, fields.footerValidity, x, y, CONTENT_W, 8.8);
+  y -= 0.18 * CM;
+
+  drawSectionTitleEn(ctx, y, "Notice");
+  y -= 0.78 * CM;
+  y = drawWrappedEn(ctx, DEFAULT_OFFER_FOOTER.en.notice, x, y, CONTENT_W, 8.8);
+  y -= 0.18 * CM;
+
+  drawSectionTitleEn(ctx, y, "Offer Acceptance");
+  y -= 0.78 * CM;
+  drawLeft(ctx, x, y, `[ ] ${fields.footerAcceptance}`, 9);
+  y -= 0.5 * CM;
+  drawLeft(ctx, x, y, `[ ] ${fields.footerRejection}`, 9);
+  y -= 0.4 * CM;
+  y = drawWrappedEn(ctx, "....................................................................................", x, y, CONTENT_W, 9);
+  y -= 0.3 * CM;
+
+  for (const line of [
+    "Employee name: ........................................................",
+    "Signature: ..............................................................",
+    "Date: ____ / ____ / ________",
   ]) {
-    if (!block) continue;
-    if (hasArabic(block)) y = drawWrappedAr(ctx, block, ctx.width - MARGIN_X, y, CONTENT_W);
-    else y = drawWrappedEn(ctx, block, x, y, CONTENT_W);
-    y -= 0.12 * CM;
+    drawLeft(ctx, x, y, line, 9);
+    y -= 0.4 * CM;
   }
-
-  ctx.page.drawLine({
-    start: { x: 2 * CM, y: 2.35 * CM },
-    end: { x: ctx.width - 2 * CM, y: 2.35 * CM },
-    thickness: 1,
-    color: NAVY,
-  });
-  drawLeft(ctx, 2.3 * CM, 1.35 * CM, "Human Resources Department", 9.5);
+  y -= 0.16 * CM;
+  for (const line of [
+    "HR approval: ....................................................",
+    "Signature: ..............................................................",
+    "Date: ____ / ____ / ________",
+  ]) {
+    drawLeft(ctx, x, y, line, 9);
+    y -= 0.4 * CM;
+  }
 }
 
 export async function buildOfferPdf(offer: JobOffer): Promise<Uint8Array> {
@@ -604,8 +720,12 @@ export async function buildOfferPdf(offer: JobOffer): Promise<Uint8Array> {
     fontEnBold,
   };
 
-  if (isAr) drawArabicOffer(ctx, offer, fields, logo);
-  else drawEnglishOffer(ctx, offer, fields, logo);
+  if (isAr) {
+    const flow: OfferFlow = { pdf, ctx, y: PAGE_TOP };
+    drawArabicOffer(flow, offer, fields, logo);
+  } else {
+    drawEnglishOffer(ctx, offer, fields, logo);
+  }
 
   return pdf.save();
 }
