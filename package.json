@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev --port 3002",
     "db:generate": "prisma generate",
-    "db:push": "prisma db push",
+    "db:push": "echo 'db:push is disabled: shared database, schema owned by DABOUQ-Tools' && exit 1",
     "build": "prisma generate && NODE_ENV=production next build",
     "start": "next start --port 3002",
     "lint": "next lint",
